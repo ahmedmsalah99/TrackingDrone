@@ -1,7 +1,10 @@
 #include "video_manager/video_manager.hpp"
+#include "video_manager/draw.hpp"
 #include <chrono>
 #include <iomanip>
 #include <sstream>
+#include <message_filters/subscriber.h>
+#include <message_filters/cache.h>
 
 using namespace std::chrono_literals;
 
@@ -13,23 +16,24 @@ VideoManager::VideoManager(const rclcpp::NodeOptions& options)
     // Create subscriptions to the stream manager topics
     rclcpp::QoS qos(rclcpp::KeepLast(10));
     
-    current_frame_subscription_ = this->create_subscription<shm_msgs::msg::Image1m>(
-        "/stream_manager/current_frame", 
-        qos,
-        std::bind(&VideoManager::currentFrameCallback, this, std::placeholders::_1)
-    );
+    current_frame_subscription_ = std::make_shared<message_filters::Subscriber<shm_msgs::msg::Image1m>>(this, "/stream_manager/current_frame");
+    frame_cache_ = std::make_shared<message_filters::Cache<shm_msgs::msg::Image1m>>(*current_frame_subscription_, 50);
+    frame_cache_->registerCallback(std::bind(&VideoManager::currentFrameCallback, this, std::placeholders::_1));
     
+    detection_subscription_ = this->create_subscription<common_msgs::msg::Detections>(
+        "detections",
+        qos,
+        std::bind(&VideoManager::detectionCallback, this, std::placeholders::_1)
+    );
+
+
     delayed_frame_subscription_ = this->create_subscription<shm_msgs::msg::Image1m>(
         "/stream_manager/delayed_frame", 
         qos,
         std::bind(&VideoManager::delayedFrameCallback, this, std::placeholders::_1)
     );
     
-    // Create timer for display updates (20ms as requested)
-    display_timer_ = this->create_wall_timer(
-        std::chrono::milliseconds(static_cast<int>(TIMER_PERIOD_MS)),
-        std::bind(&VideoManager::displayTimerCallback, this)
-    );
+    
     
     // Initialize OpenCV windows
     cv::namedWindow("Current Frame", cv::WINDOW_AUTOSIZE);
@@ -39,7 +43,6 @@ VideoManager::VideoManager(const rclcpp::NodeOptions& options)
     RCLCPP_INFO(this->get_logger(), "Subscribed to:");
     RCLCPP_INFO(this->get_logger(), "  - /stream_manager/current_frame");
     RCLCPP_INFO(this->get_logger(), "  - /stream_manager/delayed_frame");
-    RCLCPP_INFO(this->get_logger(), "Display timer running at %.1f Hz", 1000.0 / TIMER_PERIOD_MS);
 }
 
 VideoManager::~VideoManager()
@@ -48,31 +51,63 @@ VideoManager::~VideoManager()
     cv::destroyAllWindows();
 }
 
-void VideoManager::currentFrameCallback(const shm_msgs::msg::Image1m::SharedPtr msg)
+void VideoManager::currentFrameCallback(const shm_msgs::msg::Image1m::ConstSharedPtr& msg)
 {
     try {
-        std::lock_guard<std::mutex> lock(frame_mutex_);
         current_frame_ = shm_msgs::toCvShare(msg);
-        
-        RCLCPP_DEBUG(this->get_logger(), "Received current frame: %dx%d, encoding: %s", 
-                    msg->width, msg->height, msg->encoding.data.data());
-        
-        // Calculate transport time
-        auto now = this->get_clock()->now();
-        auto transport_time_ns = (now - current_frame_->header.stamp).nanoseconds();
-        auto transport_time_ms = transport_time_ns / 1000000.0;
-        
-        RCLCPP_DEBUG(this->get_logger(), "Current frame transport time: %.3f ms", transport_time_ms);
-        
+        displayFrames();
     } catch (const std::exception& e) {
         RCLCPP_ERROR(this->get_logger(), "Error processing current frame: %s", e.what());
     }
 }
 
+void VideoManager::detectionCallback(const common_msgs::msg::Detections::SharedPtr detmsg){
+    // std::vector<shm_msgs::msg::Image1m::ConstSharedPtr> msgs = frame_cache_->getInterval(msg->header.stamp, now);
+    rclcpp::Time oldesttime = frame_cache_->getOldestTime();
+    rclcpp::Time latesttime = frame_cache_->getLatestTime();
+    rclcpp::Time detection_stamp(detmsg->stamp);
+    // RCLCPP_WARN(
+    //         this->get_logger(),
+    //         "Detection timestamp is older than cached frames. "
+    //         "Detection time: %.3f, Oldest cached frame time: %.3f, latest time: %.3f",
+    //         detection_stamp.seconds(), oldesttime.seconds(), latesttime.seconds()
+    //     );
+    if (detection_stamp < oldesttime) {
+        
+        RCLCPP_WARN(
+            this->get_logger(),
+            "Detection timestamp is older than cached frames. "
+            "Detection time: %.3f, Oldest cached frame time: %.3f",
+            detection_stamp.seconds(), oldesttime.seconds()
+        );
+        return;
+    }
+    
+    shm_msgs::msg::Image1m::ConstSharedPtr framemsg = frame_cache_->getElemBeforeTime(detection_stamp);
+    if (!framemsg) {
+        RCLCPP_WARN(this->get_logger(), "No current frame available for timestamp: %d", detmsg->stamp.nanosec);
+        return;
+    }
+    rclcpp::Time msg_time(framemsg->header.stamp);
+    rclcpp::Time det_time(detmsg->stamp);
+
+    if ((msg_time - det_time) > rclcpp::Duration::from_seconds(0.05)){
+         RCLCPP_WARN(this->get_logger(), "Detection timed out");
+        return;
+    }
+    std::lock_guard<std::mutex> lock(detection_frame_mutex);
+    detection_frame_ = shm_msgs::toCvShare(framemsg);
+    if (detection_frame_->image.empty()) return;
+    
+    
+    current_detection = detmsg->detections;
+    
+
+}
+
 void VideoManager::delayedFrameCallback(const shm_msgs::msg::Image1m::SharedPtr msg)
 {
     try {
-        std::lock_guard<std::mutex> lock(frame_mutex_);
         delayed_frame_ = shm_msgs::toCvShare(msg);
         
         RCLCPP_DEBUG(this->get_logger(), "Received delayed frame: %dx%d, encoding: %s", 
@@ -90,14 +125,24 @@ void VideoManager::delayedFrameCallback(const shm_msgs::msg::Image1m::SharedPtr 
     }
 }
 
-void VideoManager::displayTimerCallback()
+void VideoManager::displayFrames()
 {
-    std::lock_guard<std::mutex> lock(frame_mutex_);
     
+
     // Display current frame if available
-    if (current_frame_ && !current_frame_->image.empty()) {
+    if (!detection_frame_ && current_frame_ && !current_frame_->image.empty()) {
         displayFrameWithMetadata(current_frame_->image, "Current Frame", 
                                current_frame_->header, "CURRENT");
+    }else if(detection_frame_ && !detection_frame_->image.empty()){
+        // if ((get_clock()->now() - rclcpp::Time(detection_frame_->header.stamp)) > rclcpp::Duration::from_seconds(0.5)) {
+        //     detection_frame_ = nullptr;
+        // }else{
+            std::lock_guard<std::mutex> lock(detection_frame_mutex);
+            cv::Mat image = drawBoundingBox(detection_frame_->image, current_detection);
+            displayFrameWithMetadata(image, "Current Frame",
+                               detection_frame_->header, "CURRENT");
+            detection_frame_ = nullptr;
+        // }
     }
     
     // Display delayed frame if available
@@ -146,7 +191,7 @@ void VideoManager::displayFrameWithMetadata(const cv::Mat& frame, const std::str
     metadata_ss << "Display Time: " << std::put_time(std::localtime(&time_t), "%H:%M:%S");
     
     // Overlay metadata on frame
-    overlayMetadata(display_frame, metadata_ss.str());
+    // overlayMetadata(display_frame, metadata_ss.str());
     
     // Display the frame
     cv::imshow(window_name, display_frame);

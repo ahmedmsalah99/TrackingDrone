@@ -36,6 +36,7 @@ find_package(Threads REQUIRED)
 
 # find dependencies
 find_package(shm_msgs REQUIRED)
+find_package(common_msgs REQUIRED)
 
 add_executable(video_manager_node src/video_manager_node.cpp)
 target_include_directories(video_manager_node PUBLIC
@@ -46,6 +47,7 @@ ament_target_dependencies(
   video_manager_node
   "rclcpp"
   "shm_msgs"
+  "common_msgs"
 )
 target_include_directories(${PROJECT_NAME}_node BEFORE PRIVATE
     ${shm_msgs_DIR}/../../../include

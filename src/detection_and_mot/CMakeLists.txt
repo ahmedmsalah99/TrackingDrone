@@ -56,9 +56,12 @@ ament_target_dependencies(
 
 target_link_libraries(detection_and_mot_node
   ${OpenCV_LIBRARIES}
-  # ${ONNXRUNTIME_LIBRARIES}
-  # onnxruntime::onnxruntime 
   "${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime/lib/libonnxruntime.so"
+  "${CMAKE_CURRENT_SOURCE_DIR}/lib/liblibocsort.so"
+  Eigen3::Eigen
+)
+set_target_properties(detection_and_mot_node PROPERTIES
+  INSTALL_RPATH "$ORIGIN/../lib"
 )
 
 target_include_directories(detection_and_mot_node BEFORE PRIVATE
@@ -72,6 +75,17 @@ install(TARGETS detection_and_mot_node
 install(DIRECTORY resources/
 DESTINATION share/${PROJECT_NAME}/resources)
 
+install( 
+  DIRECTORY
+  lib
+  DESTINATION lib
+)
+
+install(
+  FILES
+  onnxruntime/lib/libonnxruntime.so onnxruntime/lib/libonnxruntime.so.1 onnxruntime/lib/libonnxruntime.so.1.20.1
+  DESTINATION lib/lib
+)
 
 
 if(BUILD_TESTING)

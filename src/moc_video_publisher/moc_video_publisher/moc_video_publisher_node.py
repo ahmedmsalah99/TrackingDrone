@@ -11,7 +11,7 @@ class MocVideoPublisher(Node):
         super().__init__('moc_video_publisher')
         self.publisher_ = self.create_publisher(Image, '/camera/image_raw', 10)
         self.bridge = CvBridge()
-        self.video_path = os.path.join(get_package_share_directory('moc_video_publisher'), 'videos', 'cars1.mp4')
+        self.video_path = os.path.join(get_package_share_directory('moc_video_publisher'), 'videos', 'cars2.mp4')
         self.cap = cv2.VideoCapture(self.video_path)
         if not self.cap.isOpened():
             self.get_logger().error(f"Could not open video file: {self.video_path}")

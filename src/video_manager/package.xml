@@ -12,6 +12,10 @@
   <depend>rclcpp</depend>
   <depend>shm_msgs</depend>
   <depend>libopencv-dev</depend>
+  <depend>common_msgs</depend>
+  <depend>message_filters</depend>
+  <depend>cv_bridge</depend>
+  <depend>sensor_msgs</depend>
   
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
