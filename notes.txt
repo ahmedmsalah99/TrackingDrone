@@ -1,0 +1,44 @@
+ocsort ->
+
+1- applied manually these fixes: https://github.com/noahcao/OC_SORT/pull/129
+2- Fixed ocsort library by replacing normal pointer in kalman filter by share pointer.
+
+
+
+Video Manage ->
+
+1- Frames are displayed in the same rate as current Frames.
+2- Tracked detections should have the same rate as frames too.
+
+
+Model target:
+1- Detect veichles well from sides and top-view
+2- Detect people well from top and side-view
+
+Strategy:
+1- Find a model that is trained well for self-driving cars for example
+2- Collect top-view data
+3- Train the model on the new data as well as old data to keep ot from forgetting
+4- test it on both
+
+
+Can't find a model
+Strategy:
+1- prepare a dataset (unified)
+2- Train a model on them
+
+https://www.kaggle.com/datasets/enesbayturk/vehicle-and-pedestrian-detection-dataset
+https://www.kaggle.com/datasets/redzapdos123/aerial-view-of-vehicles-and-humans-dataset-yolo
+https://github.com/VisDrone/VisDrone-Dataset
+https://arxiv.org/pdf/2001.06303
+
+
+
+
+if want to install again:
+
+git clone https://github.com/ZhenshengLee/ros2_shm_msgs.git
+git clone https://github.com/ahmedmsalah99/TrackingDrone.git --branch main
+
+place the model and the onnxruntime folders inside the detection and mot module
+place the video in the moc video publisher part
