@@ -62,7 +62,7 @@ public:
         declare_parameter<std::string>("labels_path", shared_path + "/resources/coco_mod.names");
         declare_parameter<bool>("use_gpu", false);
         declare_parameter<int>("cache_size", 30);
-        declare_parameter<double>("detection_fps", 2.0);
+        declare_parameter<double>("detection_fps", 3.0);
         declare_parameter<double>("tracking_fps", 70.0);
 
         // Get parameters
@@ -281,6 +281,43 @@ private:
             [](const Detection& d){ return FloatDetection(d); });
         RCLCPP_INFO(get_logger(), "Tracking to present on %ld images found %ld detections.",images.size(),tracked_detections_.size());
     }
+    cv::Point2f meanPoint(const std::vector<cv::Point2f>& pts) { 
+        if (pts.empty()) return cv::Point2f(0.f, 0.f);
+            cv::Point2f sum(0.f, 0.f); 
+            for (const auto &p : pts) 
+            { 
+            sum.x += p.x; sum.y += p.y; 
+            } 
+            float inv = 1.0f / static_cast<float>(pts.size());
+            return cv::Point2f(sum.x * inv, sum.y * inv); 
+    }
+    std::vector<std::vector<cv::Point2f>> detsToPoints(const std::vector<Detection>& detections, const cv::Mat & frame) const
+    { 
+        cv::Mat first_gray;
+        std::vector<std::vector<cv::Point2f>> points;
+        cv::cvtColor(frame, first_gray, cv::COLOR_BGR2GRAY);
+        for (const auto& det : detections) 
+        { // cv::Rect roi(det.box); 
+            cv::Rect roi(det.box.x, det.box.y, det.box.width, det.box.height); 
+            cv::Mat roi_img = first_gray(roi); 
+            std::vector<cv::Point2f> roi_points; 
+            cv::goodFeaturesToTrack(roi_img, roi_points, 5, 0.01, 3);
+            // KLT features 
+            // Shift ROI points to full image coordinates 
+            if (roi_points.empty()){
+                roi_points.push_back(cv::Point2f(det.box.x, det.box.y));
+            }else{
+                for (auto& p : roi_points) {
+                    p.x += roi.x; 
+                    p.y += roi.y; 
+                } 
+            }
+            std::cout << "roi_points size " << roi_points.size() << std::endl;
+            // prev_points.insert(prev_points.end(), roi_points.begin(), roi_points.end());
+            points.push_back(roi_points); 
+        } 
+        return points; 
+    }
 // Helper: generate timestamp string
 std::string getTimestamp() {
     auto now = std::chrono::system_clock::now();
@@ -296,7 +333,7 @@ std::string getTimestamp() {
 void saveTrackedDetections(
     const cv::Mat& img,
     const std::vector<Detection>& detections,
-    std::vector<cv::Point2f> points,
+    std::vector<std::vector<cv::Point2f>> points,
     const std::string& out_dir
 ) {
 
@@ -312,8 +349,10 @@ void saveTrackedDetections(
 
         // Draw bounding box
         cv::rectangle(final_img, rect, cv::Scalar(0, 255, 0), 2);
-        for (const auto& pt : points) {
-            cv::circle(final_img, pt, 3, cv::Scalar(0, 0, 255), -1); // red dots
+        for (const auto& pts : points){
+            for (const auto& pt : pts) {
+                cv::circle(final_img, pt, 1, cv::Scalar(0, 0, 255), -1); // red dots
+            }
         }
         // Optional: put text (classId and confidence)
         std::ostringstream label;
@@ -328,14 +367,9 @@ void saveTrackedDetections(
     std::string filename = out_dir + "/tracked_" + getTimestamp() + ".png";
     cv::imwrite(filename, final_img);
 }
-    void trackFrames(const std::vector<cv::Mat>& images,std::vector<Detection>& detections,cv::Mat& final_grey,std::vector<cv::Point2f>& final_points){
+    void trackFrames(const std::vector<cv::Mat>& images,std::vector<Detection>& detections,cv::Mat& final_grey,std::vector<std::vector<cv::Point2f>>& final_points){
         if(images.size()<2 || detections.size() ==0 ){
-            final_points.clear();
-            for (const auto& det : detections) {
-                // cv::Point2f center(det.box.x + det.box.width / 2.0f, det.box.y + det.box.height / 2.0f);
-                cv::Point2f center(det.box.x, det.box.y);
-                final_points.push_back(center);
-            }
+            final_points = detsToPoints(detections,images[0]);
             cv::cvtColor(images[0], final_grey, cv::COLOR_BGR2GRAY);
             RCLCPP_INFO(get_logger(),"No sufficient data for present tracking. There are %ld images and %ld detections.",
             images.size(),detections.size());
@@ -343,36 +377,41 @@ void saveTrackedDetections(
         }
         RCLCPP_INFO(get_logger(),"Sufficient data for present tracking. There are %ld images and %ld detections.",
             images.size(),detections.size());
+        std::vector<std::vector<cv::Point2f>> prev_points = detsToPoints(detections,images[0]);
         
-        std::vector<cv::Point2f> prev_points;
-        cv::Mat first_gray;
-        cv::cvtColor(images[0], first_gray, cv::COLOR_BGR2GRAY);
-        for (const auto& det : detections) {
-            // cv::Point2f center(det.box.x + det.box.width / 2.0f, det.box.y + det.box.height / 2.0f);
-            cv::Point2f center(det.box.x, det.box.y);
-            prev_points.push_back(center);
-        }
         cv::Mat prev_gray;
-        std::vector<uchar> status;
-        std::vector<float> err;
+        final_points.resize(prev_points.size());
 
         for(size_t i=1;i<images.size();i++){
             cv::cvtColor(images[i-1], prev_gray, cv::COLOR_BGR2GRAY);
             cv::cvtColor(images[i], final_grey, cv::COLOR_BGR2GRAY);
 
-            cv::calcOpticalFlowPyrLK(prev_gray, final_grey, prev_points, final_points, status, err);
-            
-            // Update detection positions
-            for (size_t i = 0; i < detections.size() && i < final_points.size(); ++i) {
-                if (status[i]) {
-                    cv::Point2f delta = final_points[i] - prev_points[i];
-                    // detections[i].box.x += delta.x;
-                    // detections[i].box.y += delta.y;
-                    detections[i].box.x = final_points[i].x;
-                    detections[i].box.y = final_points[i].y;
-
+            for (int j = prev_points.size()-1;j>-1;j--)
+            { 
+                std::cout << "prev_points size is " << prev_points[j].size() << std::endl;
+                std::vector<uchar> status;
+                std::vector<float> err;
+                cv::calcOpticalFlowPyrLK(prev_gray, final_grey, prev_points[j], final_points[j], status, err);
+                for(int k=final_points[j].size()-1;k>-1;k--){
+                    if(!status[k]){
+                        final_points[j].erase(final_points[j].begin()+k);
+                        prev_points[j].erase(prev_points[j].begin()+k);
+                    }
                 }
+                if(final_points[j].empty()){
+                    detections.erase(detections.begin()+j);
+                    final_points.erase(final_points.begin()+j);
+                    prev_points.erase(prev_points.begin()+j);
+                    continue;
+                }
+
+                cv::Point2f center = meanPoint(final_points[j]);
+                cv::Point2f delta = center - meanPoint(prev_points[j]);
+                detections[j].box.x += delta.x;
+                detections[j].box.y += delta.y;
             }
+            
+            
             saveTrackedDetections(images[i], detections, final_points, "/home/stark/stuff/Projects/TrackingDrone/ros2_ws/results");
             prev_points = final_points;
         }
@@ -390,21 +429,39 @@ void saveTrackedDetections(
         cv::cvtColor(current_frame_->image, curr_gray, cv::COLOR_BGR2GRAY);
         builtin_interfaces::msg::Time tracking_frame_stamp = current_frame_->header.stamp;
         // Track points using Lucas-Kanade
-        std::vector<cv::Point2f> curr_points;
-        std::vector<uchar> status;
-        std::vector<float> err;
-
+        std::vector<std::vector<cv::Point2f>> curr_points;
         
-        cv::calcOpticalFlowPyrLK(prev_frame_gray_, curr_gray, prev_points_, curr_points, status, err);
+
+        curr_points.resize(prev_points_.size());
+        for (int i =prev_points_.size()-1;i>-1;i--)
+        { 
+            std::cout << "prev_points_ size is " << prev_points_[i].size() << std::endl;
+            std::vector<uchar> status;
+            std::vector<float> err;
+            cv::calcOpticalFlowPyrLK(prev_frame_gray_, curr_gray, prev_points_[i], curr_points[i], status, err);
+            for(int k=curr_points[i].size()-1;k>-1;k--){
+                if(!status[k]){
+                    curr_points[i].erase(curr_points[i].begin()+k);
+                    prev_points_[i].erase(prev_points_[i].begin()+k);
+                }
+            }
+            if(curr_points[i].empty()){
+                tracked_detections_.erase(tracked_detections_.begin()+i);
+                curr_points.erase(curr_points.begin()+i);
+                prev_points_.erase(prev_points_.begin()+i);
+                continue;
+            }
+        }
         // Update tracked detections based on point movements
         for (size_t i = 0; i < tracked_detections_.size() && i < curr_points.size(); ++i) {
-            if (status[i]) {
-                cv::Point2f delta = curr_points[i] - prev_points_[i];
-                // tracked_detections_[i].box.x += delta.x;
-                // tracked_detections_[i].box.y += delta.y;
-                tracked_detections_[i].box.x = curr_points[i].x;
-                tracked_detections_[i].box.y = curr_points[i].y;
-            }
+            // if (status[i]) {
+                cv::Point2f center = meanPoint(curr_points[i]);
+                cv::Point2f delta = center - meanPoint(prev_points_[i]);
+                tracked_detections_[i].box.x += delta.x;
+                tracked_detections_[i].box.y += delta.y;
+                // tracked_detections_[i].box.x = curr_points[i].x;
+                // tracked_detections_[i].box.y = curr_points[i].y;
+            // }
         }
 
         // Update for next iteration
@@ -561,7 +618,7 @@ void saveTrackedDetections(
 
     // Lucas-Kanade tracking members
     cv::Mat prev_frame_gray_;
-    std::vector<cv::Point2f> prev_points_;
+    std::vector<std::vector<cv::Point2f>> prev_points_;
     std::vector<FloatDetection> tracked_detections_;
     builtin_interfaces::msg::Time current_stamp_;
 
