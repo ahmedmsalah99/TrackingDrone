@@ -96,7 +96,7 @@ public:
         // Higher inertia → track relies more on past motion when associating
         // Whether to use ByteTrack-style association
         //GIoU = Generalized IoU, an improvement over IoU that accounts for cases where boxes don’t overlap.
-        oc_tracker_ = std::make_shared<ocsort::OCSort>(0.2, 200, 3, 0.7, 100, "giou", 0.2, false);
+        oc_tracker_ = std::make_shared<ocsort::OCSort>(0.2, 25, 10, 0.3, 25, "giou", 0.2, false);
         
         RCLCPP_INFO(get_logger(), "DetectionAndMOTNode initialized");
     }
@@ -132,7 +132,7 @@ private:
         std::lock_guard<std::mutex> lock(tracking_mutex);
         trackFrame();
         if(!tracked_detections_.empty()){
-            std::cout << "publishing tracked frames" << std::endl;
+            // std::cout << "publishing tracked frames" << std::endl;
             Eigen::Matrix<float, Eigen::Dynamic, 6> data(tracked_detections_.size(),6);
             data = detectionsToMatrix(tracked_detections_);
             
@@ -141,7 +141,7 @@ private:
             // for (const auto& row : res) {
             //     std::cout << row << std::endl;
             // }
-            std::cout << " " << std::endl;
+            // std::cout << " " << std::endl;
             common_msgs::msg::Detections detections_msg = tracksToMsg(res);
             detections_pub_->publish(detections_msg);
         }else{
@@ -211,16 +211,23 @@ private:
         auto oldest = frame_cache_->getOldestTime();
         auto latest = frame_cache_->getLatestTime();
         auto start  = detection_stamp + rclcpp::Duration::from_nanoseconds(10);
-        std::cout << "11Cache oldest time " << oldest.seconds() << "s "
-          << oldest.nanoseconds() % 1000000000 << "ns "
-          << " latest time " << latest.seconds() << "s "
-          << latest.nanoseconds() % 1000000000 << "ns "
-          << " my interval start " << start.seconds() << "s "
-          << start.nanoseconds() % 1000000000 << "ns "
-          << " and ends " << now.seconds() << "s "
-          << now.nanoseconds() % 1000000000 << "ns"
-          << std::endl;
-        std::vector<Detection> detections = detector_->detect(detection_frame_,0.3);
+        // std::cout << "11Cache oldest time " << oldest.seconds() << "s "
+        //   << oldest.nanoseconds() % 1000000000 << "ns "
+        //   << " latest time " << latest.seconds() << "s "
+        //   << latest.nanoseconds() % 1000000000 << "ns "
+        //   << " my interval start " << start.seconds() << "s "
+        //   << start.nanoseconds() % 1000000000 << "ns "
+        //   << " and ends " << now.seconds() << "s "
+        //   << now.nanoseconds() % 1000000000 << "ns"
+        //   << std::endl;
+
+        // saveTrackedDetections(detection_frame_
+        //     ,
+        //     std::vector<Detection>(),
+        //     std::vector<cv::Point2f>(),
+        //     "/home/stark/stuff/Projects/TrackingDrone/ros2_ws/results"
+        // );
+        std::vector<Detection> detections = detector_->detect(detection_frame_,0.35);
 
         // Track detections to present
         trackDetectionsToPresent(detections,detection_frame_ ,detection_stamp);
@@ -238,22 +245,22 @@ private:
         auto oldest = frame_cache_->getOldestTime();
         auto latest = frame_cache_->getLatestTime();
         auto start  = detection_stamp_ + rclcpp::Duration::from_nanoseconds(10);
-        std::cout << "Cache oldest time " << oldest.seconds() << "s "
-          << oldest.nanoseconds() % 1000000000 << "ns "
-          << " latest time " << latest.seconds() << "s "
-          << latest.nanoseconds() % 1000000000 << "ns "
-          << " my interval start " << start.seconds() << "s "
-          << start.nanoseconds() % 1000000000 << "ns "
-          << " and ends " << now.seconds() << "s "
-          << now.nanoseconds() % 1000000000 << "ns"
-          << std::endl;
+        // std::cout << "Cache oldest time " << oldest.seconds() << "s "
+        //   << oldest.nanoseconds() % 1000000000 << "ns "
+        //   << " latest time " << latest.seconds() << "s "
+        //   << latest.nanoseconds() % 1000000000 << "ns "
+        //   << " my interval start " << start.seconds() << "s "
+        //   << start.nanoseconds() % 1000000000 << "ns "
+        //   << " and ends " << now.seconds() << "s "
+        //   << now.nanoseconds() % 1000000000 << "ns"
+        //   << std::endl;
 
-
-        std::cout << "period between " << (now - detection_stamp_).seconds() << std::endl;
-        std::cout << "there are " << msgs.size() << " right now" << std::endl;
+        
+        // std::cout << "period between " << (now - detection_stamp_).seconds() << std::endl;
+        // std::cout << "there are " << msgs.size() << " right now" << std::endl;
         std::vector<cv::Mat> images;
         images.push_back(detection_frame_);
-        saveTrackedDetections(images, detections, "/home/stark/stuff/Projects/TrackingDrone/ros2_ws/results2");
+        
         // Track through each frame in the interval
         for (const auto& msg : msgs) {
             shm_msgs::CvImageConstPtr cv_img = shm_msgs::toCvShare(msg);
@@ -263,6 +270,7 @@ private:
         std::lock_guard<std::mutex> lock(tracking_mutex);
         // Set tracked detections
         trackFrames(images,detections,prev_frame_gray_,prev_points_);
+        // saveTrackedDetections(images, detections, prev_points_, "/home/stark/stuff/Projects/TrackingDrone/ros2_ws/results");
         tracked_detections_.clear();
         tracked_detections_.reserve(detections.size());
         
@@ -286,14 +294,13 @@ std::string getTimestamp() {
     return oss.str();
 }
 void saveTrackedDetections(
-    const std::vector<cv::Mat>& images,
+    const cv::Mat& img,
     const std::vector<Detection>& detections,
+    std::vector<cv::Point2f> points,
     const std::string& out_dir
 ) {
-    if (images.empty()) return;
 
-    cv::Mat final_img = images.back().clone();
-
+    cv::Mat final_img = img.clone();
     for (const auto& det : detections) {
         // Convert your FloatBoundingBox into cv::Rect
         cv::Rect rect(
@@ -305,7 +312,9 @@ void saveTrackedDetections(
 
         // Draw bounding box
         cv::rectangle(final_img, rect, cv::Scalar(0, 255, 0), 2);
-
+        for (const auto& pt : points) {
+            cv::circle(final_img, pt, 3, cv::Scalar(0, 0, 255), -1); // red dots
+        }
         // Optional: put text (classId and confidence)
         std::ostringstream label;
         label << "ID:" << det.classId << " " << std::fixed << std::setprecision(2) << det.conf;
@@ -323,7 +332,8 @@ void saveTrackedDetections(
         if(images.size()<2 || detections.size() ==0 ){
             final_points.clear();
             for (const auto& det : detections) {
-                cv::Point2f center(det.box.x + det.box.width / 2.0f, det.box.y + det.box.height / 2.0f);
+                // cv::Point2f center(det.box.x + det.box.width / 2.0f, det.box.y + det.box.height / 2.0f);
+                cv::Point2f center(det.box.x, det.box.y);
                 final_points.push_back(center);
             }
             cv::cvtColor(images[0], final_grey, cv::COLOR_BGR2GRAY);
@@ -338,7 +348,8 @@ void saveTrackedDetections(
         cv::Mat first_gray;
         cv::cvtColor(images[0], first_gray, cv::COLOR_BGR2GRAY);
         for (const auto& det : detections) {
-            cv::Point2f center(det.box.x + det.box.width / 2.0f, det.box.y + det.box.height / 2.0f);
+            // cv::Point2f center(det.box.x + det.box.width / 2.0f, det.box.y + det.box.height / 2.0f);
+            cv::Point2f center(det.box.x, det.box.y);
             prev_points.push_back(center);
         }
         cv::Mat prev_gray;
@@ -350,15 +361,19 @@ void saveTrackedDetections(
             cv::cvtColor(images[i], final_grey, cv::COLOR_BGR2GRAY);
 
             cv::calcOpticalFlowPyrLK(prev_gray, final_grey, prev_points, final_points, status, err);
-
+            
             // Update detection positions
             for (size_t i = 0; i < detections.size() && i < final_points.size(); ++i) {
                 if (status[i]) {
                     cv::Point2f delta = final_points[i] - prev_points[i];
-                    detections[i].box.x += delta.x;
-                    detections[i].box.y += delta.y;
+                    // detections[i].box.x += delta.x;
+                    // detections[i].box.y += delta.y;
+                    detections[i].box.x = final_points[i].x;
+                    detections[i].box.y = final_points[i].y;
+
                 }
             }
+            saveTrackedDetections(images[i], detections, final_points, "/home/stark/stuff/Projects/TrackingDrone/ros2_ws/results");
             prev_points = final_points;
         }
     }
@@ -385,8 +400,10 @@ void saveTrackedDetections(
         for (size_t i = 0; i < tracked_detections_.size() && i < curr_points.size(); ++i) {
             if (status[i]) {
                 cv::Point2f delta = curr_points[i] - prev_points_[i];
-                tracked_detections_[i].box.x += delta.x;
-                tracked_detections_[i].box.y += delta.y;
+                // tracked_detections_[i].box.x += delta.x;
+                // tracked_detections_[i].box.y += delta.y;
+                tracked_detections_[i].box.x = curr_points[i].x;
+                tracked_detections_[i].box.y = curr_points[i].y;
             }
         }
 
