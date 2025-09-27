@@ -96,7 +96,7 @@ public:
         // Higher inertia → track relies more on past motion when associating
         // Whether to use ByteTrack-style association
         //GIoU = Generalized IoU, an improvement over IoU that accounts for cases where boxes don’t overlap.
-        oc_tracker_ = std::make_shared<ocsort::OCSort>(0.2, 25, 10, 0.3, 25, "giou", 0.2, false);
+        oc_tracker_ = std::make_shared<ocsort::OCSort>(0.2, 50, 1, 0.3, 50, "giou", 0.8, false);
         
         RCLCPP_INFO(get_logger(), "DetectionAndMOTNode initialized");
     }
@@ -129,37 +129,38 @@ private:
         current_frame_ = shm_msgs::toCvShare(msg);
         current_stamp_ = msg->header.stamp;
         // track the frame 
-        std::lock_guard<std::mutex> lock(tracking_mutex);
-        trackFrame();
-        if(!tracked_detections_.empty()){
-            // std::cout << "publishing tracked frames" << std::endl;
-            Eigen::Matrix<float, Eigen::Dynamic, 6> data(tracked_detections_.size(),6);
-            data = detectionsToMatrix(tracked_detections_);
-            
-
-            std::vector<Eigen::RowVectorXf> res = oc_tracker_->update(data);
-            // for (const auto& row : res) {
-            //     std::cout << row << std::endl;
-            // }
-            // std::cout << " " << std::endl;
-            common_msgs::msg::Detections detections_msg = tracksToMsg(res);
-            detections_pub_->publish(detections_msg);
-        }else{
-            std::cout << "tracked frames are empty for some reason" << std::endl;
+        std::lock_guard<std::mutex> lock(detection_mutex);
+        rclcpp::Time msg_stamp;
+        // if(detections_.size() == 0){
+        //     msg_stamp = rclcpp::Time(current_stamp_) - current_det_delay_;
+        // }
+        msg_stamp = rclcpp::Time(current_stamp_) - current_det_delay_;
+        std::cout << "detections_.size() " << detections_.size() << std::endl;
+        Eigen::Matrix<float, Eigen::Dynamic, 6> data(detections_.size(),6);
+        data = detectionsToMatrix(detections_);
+        std::vector<Eigen::RowVectorXf> res = oc_tracker_->update(data);
+        
+        for (const auto& row : res) {
+            std::cout << row << std::endl;
         }
+        std::cout << " " << std::endl;
+        common_msgs::msg::Detections detections_msg = tracksToMsg(res,msg_stamp);
+        detections_pub_->publish(detections_msg);
+        // detections_.clear();
+
     }
     Eigen::Matrix<float, Eigen::Dynamic, 6> detectionsToMatrix(
-        const std::vector<FloatDetection>& detections)
+        const std::vector<Detection>& detections)
     {
         Eigen::Matrix<float, Eigen::Dynamic, 6> data(detections.size(), 6);
 
         for (size_t i = 0; i < detections.size(); i++)
         {
             const auto& det = detections[i];
-            data(i, 0) = det.box.x;
-            data(i, 1) = det.box.y;
-            data(i, 2) = det.box.x + det.box.width;
-            data(i, 3) = det.box.y + det.box.height;
+            data(i, 0) = static_cast<float>(det.box.x);
+            data(i, 1) = static_cast<float>(det.box.y);
+            data(i, 2) = static_cast<float>(det.box.x + det.box.width);
+            data(i, 3) = static_cast<float>(det.box.y + det.box.height);
             data(i, 4) = det.conf;
             data(i, 5) = static_cast<float>(det.classId);
         }
@@ -167,10 +168,13 @@ private:
     }
 
     common_msgs::msg::Detections tracksToMsg(
-        const std::vector<Eigen::RowVectorXf>& tracks)
+        const std::vector<Eigen::RowVectorXf>& tracks,
+        const rclcpp::Time time_stamp
+        )
     {
         common_msgs::msg::Detections msg;
-        msg.stamp = get_clock()->now();  
+        // msg.stamp = get_clock()->now();  
+        msg.stamp = time_stamp;
 
         // Optionally set current_target_id (e.g., first active track)
         msg.current_target_id = -1;
@@ -205,272 +209,78 @@ private:
         }
         // Store detection frame and points
         cv::Mat detection_frame_ = current_frame_->image.clone();
-        rclcpp::Time detection_stamp(current_frame_->header.stamp);
+        detection_stamp_ = rclcpp::Time(current_frame_->header.stamp);
         // Run detection
         rclcpp::Time now = get_clock()->now();
         auto oldest = frame_cache_->getOldestTime();
         auto latest = frame_cache_->getLatestTime();
-        auto start  = detection_stamp + rclcpp::Duration::from_nanoseconds(10);
-        // std::cout << "11Cache oldest time " << oldest.seconds() << "s "
-        //   << oldest.nanoseconds() % 1000000000 << "ns "
-        //   << " latest time " << latest.seconds() << "s "
-        //   << latest.nanoseconds() % 1000000000 << "ns "
-        //   << " my interval start " << start.seconds() << "s "
-        //   << start.nanoseconds() % 1000000000 << "ns "
-        //   << " and ends " << now.seconds() << "s "
-        //   << now.nanoseconds() % 1000000000 << "ns"
-        //   << std::endl;
-
-        // saveTrackedDetections(detection_frame_
-        //     ,
-        //     std::vector<Detection>(),
-        //     std::vector<cv::Point2f>(),
-        //     "/home/stark/stuff/Projects/TrackingDrone/ros2_ws/results"
-        // );
-        std::vector<Detection> detections = detector_->detect(detection_frame_,0.35);
-
-        // Track detections to present
-        trackDetectionsToPresent(detections,detection_frame_ ,detection_stamp);
-    }
-    void trackDetectionsToPresent(std::vector<Detection>& detections,cv::Mat& detection_frame_, rclcpp::Time detection_stamp_){
-        if (detections.empty()) {
-            RCLCPP_WARN(get_logger(), "Tracking detections to present found no detections ");
-            return;
-        }
-        RCLCPP_INFO(get_logger(), "Started tracking to present with %ld detections.",detections.size());
-        rclcpp::Time now = get_clock()->now();
-        // Get messages from cache after detection_stamp
-        std::vector<shm_msgs::msg::Image1m::ConstSharedPtr> msgs = 
-                                        frame_cache_->getInterval(detection_stamp_+rclcpp::Duration::from_nanoseconds(10), now);
-        auto oldest = frame_cache_->getOldestTime();
-        auto latest = frame_cache_->getLatestTime();
         auto start  = detection_stamp_ + rclcpp::Duration::from_nanoseconds(10);
-        // std::cout << "Cache oldest time " << oldest.seconds() << "s "
-        //   << oldest.nanoseconds() % 1000000000 << "ns "
-        //   << " latest time " << latest.seconds() << "s "
-        //   << latest.nanoseconds() % 1000000000 << "ns "
-        //   << " my interval start " << start.seconds() << "s "
-        //   << start.nanoseconds() % 1000000000 << "ns "
-        //   << " and ends " << now.seconds() << "s "
-        //   << now.nanoseconds() % 1000000000 << "ns"
-        //   << std::endl;
 
-        
-        // std::cout << "period between " << (now - detection_stamp_).seconds() << std::endl;
-        // std::cout << "there are " << msgs.size() << " right now" << std::endl;
-        std::vector<cv::Mat> images;
-        images.push_back(detection_frame_);
-        
-        // Track through each frame in the interval
-        for (const auto& msg : msgs) {
-            shm_msgs::CvImageConstPtr cv_img = shm_msgs::toCvShare(msg);
-            if (cv_img->image.empty()) continue;
-            images.push_back(cv_img->image);
-        }
-        std::lock_guard<std::mutex> lock(tracking_mutex);
-        // Set tracked detections
-        trackFrames(images,detections,prev_frame_gray_,prev_points_);
-        // saveTrackedDetections(images, detections, prev_points_, "/home/stark/stuff/Projects/TrackingDrone/ros2_ws/results");
-        tracked_detections_.clear();
-        tracked_detections_.reserve(detections.size());
-        
+        auto detections = detector_->detect(detection_frame_,0.35);
 
-        std::transform(
-            detections.begin(), detections.end(),
-            std::back_inserter(tracked_detections_),
-            [](const Detection& d){ return FloatDetection(d); });
-        RCLCPP_INFO(get_logger(), "Tracking to present on %ld images found %ld detections.",images.size(),tracked_detections_.size());
-    }
-    cv::Point2f meanPoint(const std::vector<cv::Point2f>& pts) { 
-        if (pts.empty()) return cv::Point2f(0.f, 0.f);
-            cv::Point2f sum(0.f, 0.f); 
-            for (const auto &p : pts) 
-            { 
-            sum.x += p.x; sum.y += p.y; 
-            } 
-            float inv = 1.0f / static_cast<float>(pts.size());
-            return cv::Point2f(sum.x * inv, sum.y * inv); 
-    }
-    std::vector<std::vector<cv::Point2f>> detsToPoints(const std::vector<Detection>& detections, const cv::Mat & frame) const
-    { 
-        cv::Mat first_gray;
-        std::vector<std::vector<cv::Point2f>> points;
-        cv::cvtColor(frame, first_gray, cv::COLOR_BGR2GRAY);
-        for (const auto& det : detections) 
-        { // cv::Rect roi(det.box); 
-            cv::Rect roi(det.box.x, det.box.y, det.box.width, det.box.height); 
-            cv::Mat roi_img = first_gray(roi); 
-            std::vector<cv::Point2f> roi_points; 
-            cv::goodFeaturesToTrack(roi_img, roi_points, 5, 0.01, 3);
-            // KLT features 
-            // Shift ROI points to full image coordinates 
-            if (roi_points.empty()){
-                roi_points.push_back(cv::Point2f(det.box.x, det.box.y));
-            }else{
-                for (auto& p : roi_points) {
-                    p.x += roi.x; 
-                    p.y += roi.y; 
-                } 
-            }
-            std::cout << "roi_points size " << roi_points.size() << std::endl;
-            // prev_points.insert(prev_points.end(), roi_points.begin(), roi_points.end());
-            points.push_back(roi_points); 
-        } 
-        return points; 
-    }
-// Helper: generate timestamp string
-std::string getTimestamp() {
-    auto now = std::chrono::system_clock::now();
-    auto t = std::chrono::system_clock::to_time_t(now);
-    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                  now.time_since_epoch()) % 1000;
-
-    std::ostringstream oss;
-    oss << std::put_time(std::localtime(&t), "%Y%m%d_%H%M%S")
-        << "_" << std::setw(3) << std::setfill('0') << ms.count();
-    return oss.str();
-}
-void saveTrackedDetections(
-    const cv::Mat& img,
-    const std::vector<Detection>& detections,
-    std::vector<std::vector<cv::Point2f>> points,
-    const std::string& out_dir
-) {
-
-    cv::Mat final_img = img.clone();
-    for (const auto& det : detections) {
-        // Convert your FloatBoundingBox into cv::Rect
-        cv::Rect rect(
-            static_cast<int>(det.box.x),
-            static_cast<int>(det.box.y),
-            static_cast<int>(det.box.width),
-            static_cast<int>(det.box.height)
-        );
-
-        // Draw bounding box
-        cv::rectangle(final_img, rect, cv::Scalar(0, 255, 0), 2);
-        for (const auto& pts : points){
-            for (const auto& pt : pts) {
-                cv::circle(final_img, pt, 1, cv::Scalar(0, 0, 255), -1); // red dots
-            }
-        }
-        // Optional: put text (classId and confidence)
-        std::ostringstream label;
-        label << "ID:" << det.classId << " " << std::fixed << std::setprecision(2) << det.conf;
-        cv::putText(final_img, label.str(),
-                    cv::Point(rect.x, rect.y - 5),
-                    cv::FONT_HERSHEY_SIMPLEX, 0.5,
-                    cv::Scalar(0, 255, 0), 1);
-    }
-
-    // Build filename with timestamp
-    std::string filename = out_dir + "/tracked_" + getTimestamp() + ".png";
-    cv::imwrite(filename, final_img);
-}
-    void trackFrames(const std::vector<cv::Mat>& images,std::vector<Detection>& detections,cv::Mat& final_grey,std::vector<std::vector<cv::Point2f>>& final_points){
-        if(images.size()<2 || detections.size() ==0 ){
-            final_points = detsToPoints(detections,images[0]);
-            cv::cvtColor(images[0], final_grey, cv::COLOR_BGR2GRAY);
-            RCLCPP_INFO(get_logger(),"No sufficient data for present tracking. There are %ld images and %ld detections.",
-            images.size(),detections.size());
-            return;
-        }
-        RCLCPP_INFO(get_logger(),"Sufficient data for present tracking. There are %ld images and %ld detections.",
-            images.size(),detections.size());
-        std::vector<std::vector<cv::Point2f>> prev_points = detsToPoints(detections,images[0]);
-        
-        cv::Mat prev_gray;
-        final_points.resize(prev_points.size());
-
-        for(size_t i=1;i<images.size();i++){
-            cv::cvtColor(images[i-1], prev_gray, cv::COLOR_BGR2GRAY);
-            cv::cvtColor(images[i], final_grey, cv::COLOR_BGR2GRAY);
-
-            for (int j = prev_points.size()-1;j>-1;j--)
-            { 
-                std::cout << "prev_points size is " << prev_points[j].size() << std::endl;
-                std::vector<uchar> status;
-                std::vector<float> err;
-                cv::calcOpticalFlowPyrLK(prev_gray, final_grey, prev_points[j], final_points[j], status, err);
-                for(int k=final_points[j].size()-1;k>-1;k--){
-                    if(!status[k]){
-                        final_points[j].erase(final_points[j].begin()+k);
-                        prev_points[j].erase(prev_points[j].begin()+k);
-                    }
-                }
-                if(final_points[j].empty()){
-                    detections.erase(detections.begin()+j);
-                    final_points.erase(final_points.begin()+j);
-                    prev_points.erase(prev_points.begin()+j);
-                    continue;
-                }
-
-                cv::Point2f center = meanPoint(final_points[j]);
-                cv::Point2f delta = center - meanPoint(prev_points[j]);
-                detections[j].box.x += delta.x;
-                detections[j].box.y += delta.y;
-            }
-            
-            
-            saveTrackedDetections(images[i], detections, final_points, "/home/stark/stuff/Projects/TrackingDrone/ros2_ws/results");
-            prev_points = final_points;
-        }
+        std::lock_guard<std::mutex> lock(detection_mutex);
+        detections_ = detections;
+        current_det_delay_ = rclcpp::Time(current_stamp_) - detection_stamp_;
+        std::cout << "my detections_.size() " << detections_.size()
+          << " current_det_delay_ (sec) " << current_det_delay_.seconds()
+          << " current_det_delay_ (nsec) " << current_det_delay_.nanoseconds()
+          << std::endl;
     }
     
-    void trackFrame() {
-        if (prev_frame_gray_.empty() || current_frame_->image.empty() || prev_points_.empty()) {
-            std::cout << "can't track frames"<< std::endl;
-            std::cout << "prev_frame_gray_.empty() " << prev_frame_gray_.empty() << " current_frame_->image.empty() " <<  current_frame_->image.empty() << " prev_points_.empty() " << prev_points_.empty() <<std::endl;
-            return;
-        }
+    
+    // Helper: generate timestamp string
+    std::string getTimestamp() {
+        auto now = std::chrono::system_clock::now();
+        auto t = std::chrono::system_clock::to_time_t(now);
+        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    now.time_since_epoch()) % 1000;
 
-        // Convert current frame to gray
-        cv::Mat curr_gray;
-        cv::cvtColor(current_frame_->image, curr_gray, cv::COLOR_BGR2GRAY);
-        builtin_interfaces::msg::Time tracking_frame_stamp = current_frame_->header.stamp;
-        // Track points using Lucas-Kanade
-        std::vector<std::vector<cv::Point2f>> curr_points;
-        
+        std::ostringstream oss;
+        oss << std::put_time(std::localtime(&t), "%Y%m%d_%H%M%S")
+            << "_" << std::setw(3) << std::setfill('0') << ms.count();
+        return oss.str();
+    }
 
-        curr_points.resize(prev_points_.size());
-        for (int i =prev_points_.size()-1;i>-1;i--)
-        { 
-            std::cout << "prev_points_ size is " << prev_points_[i].size() << std::endl;
-            std::vector<uchar> status;
-            std::vector<float> err;
-            cv::calcOpticalFlowPyrLK(prev_frame_gray_, curr_gray, prev_points_[i], curr_points[i], status, err);
-            for(int k=curr_points[i].size()-1;k>-1;k--){
-                if(!status[k]){
-                    curr_points[i].erase(curr_points[i].begin()+k);
-                    prev_points_[i].erase(prev_points_[i].begin()+k);
+    void saveTrackedDetections(
+        const cv::Mat& img,
+        const std::vector<Detection>& detections,
+        std::vector<std::vector<cv::Point2f>> points,
+        const std::string& out_dir
+    ) {
+
+        cv::Mat final_img = img.clone();
+        for (const auto& det : detections) {
+            // Convert your FloatBoundingBox into cv::Rect
+            cv::Rect rect(
+                static_cast<int>(det.box.x),
+                static_cast<int>(det.box.y),
+                static_cast<int>(det.box.width),
+                static_cast<int>(det.box.height)
+            );
+
+            // Draw bounding box
+            cv::rectangle(final_img, rect, cv::Scalar(0, 255, 0), 2);
+            for (const auto& pts : points){
+                for (const auto& pt : pts) {
+                    cv::circle(final_img, pt, 1, cv::Scalar(0, 0, 255), -1); // red dots
                 }
             }
-            if(curr_points[i].empty()){
-                tracked_detections_.erase(tracked_detections_.begin()+i);
-                curr_points.erase(curr_points.begin()+i);
-                prev_points_.erase(prev_points_.begin()+i);
-                continue;
-            }
-        }
-        // Update tracked detections based on point movements
-        for (size_t i = 0; i < tracked_detections_.size() && i < curr_points.size(); ++i) {
-            // if (status[i]) {
-                cv::Point2f center = meanPoint(curr_points[i]);
-                cv::Point2f delta = center - meanPoint(prev_points_[i]);
-                tracked_detections_[i].box.x += delta.x;
-                tracked_detections_[i].box.y += delta.y;
-                // tracked_detections_[i].box.x = curr_points[i].x;
-                // tracked_detections_[i].box.y = curr_points[i].y;
-            // }
+            // Optional: put text (classId and confidence)
+            std::ostringstream label;
+            label << "ID:" << det.classId << " " << std::fixed << std::setprecision(2) << det.conf;
+            cv::putText(final_img, label.str(),
+                        cv::Point(rect.x, rect.y - 5),
+                        cv::FONT_HERSHEY_SIMPLEX, 0.5,
+                        cv::Scalar(0, 255, 0), 1);
         }
 
-        // Update for next iteration
-        prev_frame_gray_ = curr_gray.clone();
-        prev_points_ = curr_points;
-
-        // Publish updated detections
-        // publishTrackings(tracking_frame_stamp);
+        // Build filename with timestamp
+        std::string filename = out_dir + "/tracked_" + getTimestamp() + ".png";
+        cv::imwrite(filename, final_img);
     }
+    
+    
+    
 
     void targetChangeCallback(const common_msgs::msg::ChangeTarget::SharedPtr msg) {
         // Find new target based on direction
@@ -480,24 +290,24 @@ void saveTrackedDetections(
         RCLCPP_INFO(get_logger(), "Changed target to ID: %d", current_target_id_);
     }
 
-    void publishTrackings(builtin_interfaces::msg::Time tracking_frame_stamp) {
-        auto msg = std::make_unique<common_msgs::msg::Detections>();
-        msg->stamp = tracking_frame_stamp;
-        msg->current_target_id = current_target_id_;
+    // void publishTrackings(builtin_interfaces::msg::Time tracking_frame_stamp) {
+    //     auto msg = std::make_unique<common_msgs::msg::Detections>();
+    //     msg->stamp = tracking_frame_stamp;
+    //     msg->current_target_id = current_target_id_;
 
-        for (const auto& det : tracked_detections_) {
-            common_msgs::msg::Detection det_msg;
-            det_msg.x = det.box.x;
-            det_msg.y = det.box.y;
-            det_msg.width = det.box.width;
-            det_msg.height = det.box.height;
-            det_msg.conf = det.conf;
-            det_msg.class_id = det.classId;
-            msg->detections.push_back(det_msg);
-        }
+    //     for (const auto& det : tracked_detections_) {
+    //         common_msgs::msg::Detection det_msg;
+    //         det_msg.x = det.box.x;
+    //         det_msg.y = det.box.y;
+    //         det_msg.width = det.box.width;
+    //         det_msg.height = det.box.height;
+    //         det_msg.conf = det.conf;
+    //         det_msg.class_id = det.classId;
+    //         msg->detections.push_back(det_msg);
+    //     }
 
-        detections_pub_->publish(std::move(msg));
-    }
+    //     detections_pub_->publish(std::move(msg));
+    // }
 
     // void updateKDTree(const std::vector<Detection>& detections) {
     //     kd_tree_->clear();
@@ -618,10 +428,10 @@ void saveTrackedDetections(
 
     // Lucas-Kanade tracking members
     cv::Mat prev_frame_gray_;
-    std::vector<std::vector<cv::Point2f>> prev_points_;
-    std::vector<FloatDetection> tracked_detections_;
+    std::vector<Detection> detections_;
     builtin_interfaces::msg::Time current_stamp_;
-
+    rclcpp::Time detection_stamp_;
+    
     std::shared_ptr<ocsort::OCSort> oc_tracker_;
     // ROS2 interfaces
     std::shared_ptr<message_filters::Subscriber<shm_msgs::msg::Image1m>> frame_sub_;
@@ -629,11 +439,11 @@ void saveTrackedDetections(
     rclcpp::Publisher<common_msgs::msg::Detections>::SharedPtr detections_pub_;
     rclcpp::Subscription<common_msgs::msg::ChangeTarget>::SharedPtr target_change_sub_;
     rclcpp::TimerBase::SharedPtr detection_timer_;
-
+    rclcpp::Duration current_det_delay_{0, 0};
     // Synchronization
     rclcpp::CallbackGroup::SharedPtr detection_timer_group_;
     rclcpp::CallbackGroup::SharedPtr frame_sub_group_;
-    std::mutex tracking_mutex;
+    std::mutex detection_mutex;
 };
 
 int main(int argc, char** argv) {
