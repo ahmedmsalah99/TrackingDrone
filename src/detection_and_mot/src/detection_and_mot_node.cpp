@@ -2,6 +2,9 @@
 #include <rclcpp/executors/multi_threaded_executor.hpp>
 // #include <cv_bridge/cv_bridge.h>
 #include <opencv2/tracking.hpp>
+#include "opencv2/tracking/tracking_legacy.hpp"
+
+// #include <opencv2/tracking/tracker.hpp>
 #include "shm_msgs/msg/image.hpp"
 #include "shm_msgs/opencv_conversions.hpp"
 #include <common_msgs/msg/detections.hpp>
@@ -42,7 +45,7 @@ public:
         tracking_fps_ = get_parameter("tracking_fps").as_double();
 
         // params.max_patch_size = 150;
-        params.resize = true;
+        // params.resize = true;
         // Initialize YOLO detector
         detector_ = std::make_unique<YOLODetector>(model_path, labels_path, use_gpu);
 
@@ -254,8 +257,8 @@ private:
         trackers_.clear();
         trackers_.reserve(tracked_detections_.size());
         for (const auto& det : tracked_detections_) {
-            cv::Ptr<cv::Tracker> tracker = cv::TrackerKCF::create(params);
-            cv::Rect bbox(static_cast<int>(det.box.x), static_cast<int>(det.box.y), static_cast<int>(det.box.width), static_cast<int>(det.box.height));
+            cv::Ptr<cv::legacy::Tracker> tracker = cv::legacy::TrackerMOSSE::create();
+            cv::Rect2d bbox(static_cast<int>(det.box.x), static_cast<int>(det.box.y), static_cast<int>(det.box.width), static_cast<int>(det.box.height));
             tracker->init(images.back(), bbox);
             trackers_.push_back(tracker);
         }
@@ -322,27 +325,30 @@ void saveTrackedDetections(
                     images.size(), detections.size());
 
         // Initialize trackers on the first image
-        std::vector<cv::Ptr<cv::TrackerKCF>> temp_trackers;
+        std::vector<cv::Ptr<cv::legacy::Tracker>> temp_trackers;
         temp_trackers.reserve(detections.size());
         auto start = std::chrono::high_resolution_clock::now();
         for (const auto& det : detections) {
-            cv::Ptr<cv::TrackerKCF> tracker = cv::TrackerKCF::create(params);
-            cv::Rect bbox(static_cast<int>(det.box.x), static_cast<int>(det.box.y), static_cast<int>(det.box.width), static_cast<int>(det.box.height));
+            cv::Ptr<cv::legacy::Tracker> tracker = cv::legacy::TrackerMOSSE::create();
+            cv::Rect2d bbox(static_cast<int>(det.box.x), static_cast<int>(det.box.y), static_cast<int>(det.box.width), static_cast<int>(det.box.height));
             tracker->init(images[0], bbox);
             tracker->update(images[0], bbox);
             temp_trackers.push_back(tracker);
         }
+
         auto end = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
         std::cout << "Creation Execution time: " << duration.count() << " ms" << std::endl;
+        std::cout << "temp_trackers size " << temp_trackers.size() << std::endl;
         saveTrackedDetections(images[0], detections, {}, "/home/stark/stuff/Projects/TrackingDrone/ros2_ws/results");
         saveTrackedDetections(images[0], detections, {}, "/home/stark/stuff/Projects/TrackingDrone/ros2_ws/results2");
         // Update trackers through subsequent images
         start = std::chrono::high_resolution_clock::now();
         for (size_t i = 1; i < images.size(); ++i) {
             for (int j = static_cast<int>(temp_trackers.size()) - 1; j >= 0; --j) {
-                cv::Rect bbox;
+                cv::Rect2d bbox;
                 bool success = temp_trackers[j]->update(images[i], bbox);
+                std::cout << "success " << success << std::endl;
                 if (success) {
                     detections[j].box.x = static_cast<float>(bbox.x);
                     detections[j].box.y = static_cast<float>(bbox.y);
@@ -354,7 +360,7 @@ void saveTrackedDetections(
                     temp_trackers.erase(temp_trackers.begin() + j);
                 }
             }
-            
+            std::cout << "temp_trackers size on " << i<< " is " << temp_trackers.size() << std::endl;
             // saveTrackedDetections(images[i], detections, {}, "/home/stark/stuff/Projects/TrackingDrone/ros2_ws/results");
         }
         end = std::chrono::high_resolution_clock::now();
@@ -363,6 +369,9 @@ void saveTrackedDetections(
     }
     
     void trackFrame() {
+        std::cout << "current_frame_->image.empty()" << current_frame_->image.empty() << std::endl;
+        std::cout << "trackers_.empty()" << trackers_.empty() << std::endl;
+        std::cout << "tracked_detections_.empty()" << tracked_detections_.empty() << std::endl;
         if (current_frame_->image.empty() || trackers_.empty() || tracked_detections_.empty()) {
             std::cout << "can't track frames: empty image or no trackers/detections" << std::endl;
             return;
@@ -370,7 +379,7 @@ void saveTrackedDetections(
         auto start = std::chrono::high_resolution_clock::now();
         // Update each KCF tracker with the current frame
         for (int i = static_cast<int>(trackers_.size()) - 1; i >= 0; --i) {
-            cv::Rect bbox;
+            cv::Rect2d bbox;
             bool success = trackers_[i]->update(current_frame_->image, bbox);
             if (success) {
                 tracked_detections_[i].box.x = static_cast<float>(bbox.x);
@@ -536,8 +545,8 @@ void saveTrackedDetections(
     // Lucas-Kanade tracking members
     cv::Mat prev_frame_gray_;
     std::vector<std::vector<cv::Point2f>> prev_points_;
-    std::vector<cv::Ptr<cv::Tracker>> trackers_;
-    cv::TrackerKCF::Params params;
+    std::vector<cv::Ptr<cv::legacy::Tracker>> trackers_;
+    // cv::legacy::TrackerMOSSE::Params params;
 
     std::vector<Detection> tracked_detections_;
     builtin_interfaces::msg::Time current_stamp_;
