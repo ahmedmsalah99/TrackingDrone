@@ -59,11 +59,11 @@ public:
     DetectionAndMOTNode() : Node("detection_and_mot_node") {
         // Initialize parameters
         std::string shared_path = ament_index_cpp::get_package_share_directory("detection_and_mot");
-        declare_parameter<std::string>("model_path", shared_path + "/resources/best3.onnx");
+        declare_parameter<std::string>("model_path", shared_path + "/resources/best3_nano.onnx");
         declare_parameter<std::string>("labels_path", shared_path + "/resources/coco_mod.names");
         declare_parameter<bool>("use_gpu", false);
         declare_parameter<int>("cache_size", 30);
-        declare_parameter<double>("detection_fps", 2.0);
+        declare_parameter<double>("detection_fps", 10.0);
         declare_parameter<double>("tracking_fps", 70.0);
 
         // Get parameters
@@ -74,7 +74,7 @@ public:
         detection_fps_ = get_parameter("detection_fps").as_double();
         tracking_fps_ = get_parameter("tracking_fps").as_double();
 
-        delay_time = rclcpp::Duration::from_seconds(0.35);
+        delay_time = rclcpp::Duration::from_seconds(0.25);
         // Initialize YOLO detector
         detector_ = std::make_unique<YOLODetector>(model_path, labels_path, use_gpu);
 
@@ -98,7 +98,7 @@ public:
         // Higher inertia → track relies more on past motion when associating
         // Whether to use ByteTrack-style association
         //GIoU = Generalized IoU, an improvement over IoU that accounts for cases where boxes don’t overlap.
-        oc_tracker_ = std::make_shared<ocsort::OCSort>(0.2, 25, 1, 0.3, 25, "giou", 0.9, false);
+        oc_tracker_ = std::make_shared<ocsort::OCSort>(0.2, 10, 3, 0.3, 10, "giou", 0.2, true);
 
         // params.resize = true;
         // params.desc_npca = cv::TrackerKCF::GRAY;  // fallback non-compressed
@@ -250,7 +250,7 @@ private:
         rclcpp::Time now = get_clock()->now() - delay_time;
         auto oldest = frame_cache_->getOldestTime();
         auto latest = frame_cache_->getLatestTime();
-        auto start  = detection_stamp + rclcpp::Duration::from_nanoseconds(10);
+        auto start  = detection_stamp + rclcpp::Duration::from_nanoseconds(5);
         // std::cout << "11Cache oldest time " << oldest.seconds() << "s "
         //   << oldest.nanoseconds() % 1000000000 << "ns "
         //   << " latest time " << latest.seconds() << "s "
@@ -268,7 +268,7 @@ private:
         //     "/home/stark/stuff/Projects/TrackingDrone/ros2_ws/results"
         // );
 
-        std::vector<Detection> detections = detector_->detect(detection_frame,0.45);
+        std::vector<Detection> detections = detector_->detect(detection_frame,0.35);
         std::lock_guard<std::mutex> lock(det_mutex);
         detection_frame_ = detection_frame.clone();
         // Track detections to present
@@ -279,7 +279,7 @@ private:
             RCLCPP_WARN(get_logger(), "Tracking detections to present found no detections ");
             return;
         }
-        RCLCPP_INFO(get_logger(), "Started tracking to present with %ld detections.",detections.size());
+        // RCLCPP_INFO(get_logger(), "Started tracking to present with %ld detections.",detections.size());
         rclcpp::Time now = get_clock()->now() - delay_time;
         // Get messages from cache after detection_stamp
         std::vector<shm_msgs::msg::Image1m::ConstSharedPtr> msgs = 
@@ -314,7 +314,7 @@ private:
         trackFrames(images,detections,prev_frame_gray_,prev_points_);
         current_detections_ = detections;
         current_detections_stamp_ = now;
-        RCLCPP_INFO(get_logger(), "Tracking to present on %ld images found %ld detections.",images.size(),tracked_detections_.size());
+        // RCLCPP_INFO(get_logger(), "Tracking to present on %ld images found %ld detections.",images.size(),tracked_detections_.size());
         // saveTrackedDetections(images, detections, prev_points_, "/home/stark/stuff/Projects/TrackingDrone/ros2_ws/results");
     }
     cv::Point2f meanPoint(const std::vector<cv::Point2f>& pts) { 
@@ -479,12 +479,12 @@ void saveTrackedDetections(
         if(images.size()<2 || detections.size() ==0 ){
             // final_points = detsToPoints(detections,images[0]);
             cv::cvtColor(images[0], final_grey, cv::COLOR_BGR2GRAY);
-            RCLCPP_INFO(get_logger(),"No sufficient data for present tracking. There are %ld images and %ld detections.",
-            images.size(),detections.size());
+            // RCLCPP_INFO(get_logger(),"No sufficient data for present tracking. There are %ld images and %ld detections.",
+            // images.size(),detections.size());
             return;
         }
-        RCLCPP_INFO(get_logger(),"Sufficient data for present tracking. There are %ld images and %ld detections.",
-            images.size(),detections.size());
+        // RCLCPP_INFO(get_logger(),"Sufficient data for present tracking. There are %ld images and %ld detections.",
+            // images.size(),detections.size());
         auto start = std::chrono::high_resolution_clock::now();
         std::vector<std::vector<cv::Point2f>> prev_points = detsToPoints(detections,images[0]);
         auto end = std::chrono::high_resolution_clock::now();
