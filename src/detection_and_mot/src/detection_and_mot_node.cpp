@@ -296,12 +296,13 @@ private:
         cv::Mat first_gray;
         std::vector<std::vector<cv::Point2f>> points;
         cv::cvtColor(frame, first_gray, cv::COLOR_BGR2GRAY);
+        float margin = 2.0f;
         for (const auto& det : detections) 
         { // cv::Rect roi(det.box); 
-            cv::Rect roi(det.box.x, det.box.y, det.box.width, det.box.height); 
+            cv::Rect roi(det.box.x + margin, det.box.y + margin, det.box.width - margin, det.box.height - margin); 
             cv::Mat roi_img = first_gray(roi); 
             std::vector<cv::Point2f> roi_points; 
-            cv::goodFeaturesToTrack(roi_img, roi_points, 5, 0.01, 3);
+            cv::goodFeaturesToTrack(roi_img, roi_points, 10, 0.01, 5);
             // KLT features 
             // Shift ROI points to full image coordinates 
             if (roi_points.empty()){
@@ -381,40 +382,59 @@ void saveTrackedDetections(
         
         cv::Mat prev_gray;
         final_points.resize(prev_points.size());
-
+        auto start = std::chrono::high_resolution_clock::now();
         for(size_t i=1;i<images.size();i++){
+            // convert the images to grey
             cv::cvtColor(images[i-1], prev_gray, cv::COLOR_BGR2GRAY);
             cv::cvtColor(images[i], final_grey, cv::COLOR_BGR2GRAY);
+            // initialize delta_x and delta_y vectors
+            std::vector<float> delta_x(prev_points.size(),0);
+            std::vector<float> delta_y(prev_points.size(),0);
 
             for (int j = prev_points.size()-1;j>-1;j--)
             { 
+                // for each detection in the image
                 std::cout << "prev_points size is " << prev_points[j].size() << std::endl;
+
+                // calculate the optical flow
                 std::vector<uchar> status;
                 std::vector<float> err;
                 cv::calcOpticalFlowPyrLK(prev_gray, final_grey, prev_points[j], final_points[j], status, err);
+                // Filter invalid tracking points
                 for(int k=final_points[j].size()-1;k>-1;k--){
                     if(!status[k]){
                         final_points[j].erase(final_points[j].begin()+k);
                         prev_points[j].erase(prev_points[j].begin()+k);
                     }
                 }
+                // Get delta movement and further filter points that don't align with the others
+                cv::Point2f delta;
+                filterAndComputeMedianDelta(prev_points[j], final_points[j],delta);
+                // If no valid points left, remove the detection
                 if(final_points[j].empty()){
                     detections.erase(detections.begin()+j);
+                    delta_x.erase(delta_x.begin()+j);
+                    delta_y.erase(delta_y.begin()+j);
                     final_points.erase(final_points.begin()+j);
                     prev_points.erase(prev_points.begin()+j);
                     continue;
                 }
-
-                cv::Point2f center = meanPoint(final_points[j]);
-                cv::Point2f delta = center - meanPoint(prev_points[j]);
-                detections[j].box.x += delta.x;
-                detections[j].box.y += delta.y;
+                // Update the deltas
+                delta_x[j] += delta.x;
+                delta_y[j] += delta.y;
             }
-            
-            
+            // Update the detections with the new deltas
+            for(int j = detections.size()-1;j>-1;j--){
+                detections[j].box.x += static_cast<int>(std::round(delta_x[j]));
+                detections[j].box.y += static_cast<int>(std::round(delta_y[j]));
+            }
+
             saveTrackedDetections(images[i], detections, final_points, "/home/stark/stuff/Projects/TrackingDrone/ros2_ws/results");
             prev_points = final_points;
         }
+        auto end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double, std::milli> elapsed = end - start;
+        std::cout << "Time taken: " << elapsed.count() << " ms" << std::endl;
     }
     
     void trackFrame() {
@@ -435,34 +455,32 @@ void saveTrackedDetections(
         curr_points.resize(prev_points_.size());
         for (int i =prev_points_.size()-1;i>-1;i--)
         { 
+            // For each detection
             std::cout << "prev_points_ size is " << prev_points_[i].size() << std::endl;
+            // Track points
             std::vector<uchar> status;
             std::vector<float> err;
             cv::calcOpticalFlowPyrLK(prev_frame_gray_, curr_gray, prev_points_[i], curr_points[i], status, err);
+            // Filter invalid points
             for(int k=curr_points[i].size()-1;k>-1;k--){
                 if(!status[k]){
                     curr_points[i].erase(curr_points[i].begin()+k);
                     prev_points_[i].erase(prev_points_[i].begin()+k);
                 }
             }
+            cv::Point2f delta;
+            filterAndComputeMedianDelta(prev_points_[i], curr_points[i],delta);
             if(curr_points[i].empty()){
                 tracked_detections_.erase(tracked_detections_.begin()+i);
                 curr_points.erase(curr_points.begin()+i);
                 prev_points_.erase(prev_points_.begin()+i);
                 continue;
             }
+            tracked_detections_[i].box.x += delta.x;
+            tracked_detections_[i].box.y += delta.y;
         }
-        // Update tracked detections based on point movements
-        for (size_t i = 0; i < tracked_detections_.size() && i < curr_points.size(); ++i) {
-            // if (status[i]) {
-                cv::Point2f center = meanPoint(curr_points[i]);
-                cv::Point2f delta = center - meanPoint(prev_points_[i]);
-                tracked_detections_[i].box.x += delta.x;
-                tracked_detections_[i].box.y += delta.y;
-                // tracked_detections_[i].box.x = curr_points[i].x;
-                // tracked_detections_[i].box.y = curr_points[i].y;
-            // }
-        }
+        
+              
 
         // Update for next iteration
         prev_frame_gray_ = curr_gray.clone();
@@ -498,6 +516,48 @@ void saveTrackedDetections(
 
         detections_pub_->publish(std::move(msg));
     }
+    // Compute median delta between two sets of matched points
+        void filterAndComputeMedianDelta(
+        const std::vector<cv::Point2f>& prev_pts,
+        std::vector<cv::Point2f>& curr_pts,
+        cv::Point2f& median_delta,
+        float threshold = 5.0f // pixels
+    ) {
+        if (prev_pts.empty() || curr_pts.empty() || prev_pts.size() != curr_pts.size()) {
+            median_delta = cv::Point2f(0.f, 0.f);
+            return;
+        }
+
+        std::vector<float> dxs, dys;
+        dxs.reserve(prev_pts.size());
+        dys.reserve(prev_pts.size());
+
+        for (size_t i = 0; i < prev_pts.size(); ++i) {
+            dxs.push_back(curr_pts[i].x - prev_pts[i].x);
+            dys.push_back(curr_pts[i].y - prev_pts[i].y);
+        }
+
+        auto median = [](std::vector<float>& v) {
+            size_t n = v.size();
+            std::nth_element(v.begin(), v.begin() + n/2, v.end());
+            return v[n/2];
+        };
+
+        float mdx = median(dxs);
+        float mdy = median(dys);
+        median_delta = cv::Point2f(mdx, mdy);
+
+        // --- erase outliers in-place ---
+        for (int i = (int)prev_pts.size() - 1; i >= 0; --i) {
+            float dx = curr_pts[i].x - prev_pts[i].x;
+            float dy = curr_pts[i].y - prev_pts[i].y;
+
+            if (std::abs(dx - mdx) > threshold || std::abs(dy - mdy) > threshold) {
+                curr_pts.erase(curr_pts.begin() + i);
+            }
+        }
+    }
+
 
     // void updateKDTree(const std::vector<Detection>& detections) {
     //     kd_tree_->clear();
