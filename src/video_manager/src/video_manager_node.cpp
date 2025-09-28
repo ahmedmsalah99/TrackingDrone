@@ -83,7 +83,7 @@ void VideoManager::detectionCallback(const common_msgs::msg::Detections::SharedP
         return;
     }
     
-    shm_msgs::msg::Image1m::ConstSharedPtr framemsg = frame_cache_->getElemBeforeTime(detection_stamp);
+    shm_msgs::msg::Image1m::ConstSharedPtr framemsg = frame_cache_->getElemBeforeTime(detection_stamp +rclcpp::Duration::from_nanoseconds(10));
     if (!framemsg) {
         RCLCPP_WARN(this->get_logger(), "No current frame available for timestamp: %d", detmsg->stamp.nanosec);
         return;
@@ -134,15 +134,15 @@ void VideoManager::displayFrames()
         displayFrameWithMetadata(current_frame_->image, "Current Frame", 
                                current_frame_->header, "CURRENT");
     }else if(detection_frame_ && !detection_frame_->image.empty()){
-        // if ((get_clock()->now() - rclcpp::Time(detection_frame_->header.stamp)) > rclcpp::Duration::from_seconds(0.5)) {
-        //     detection_frame_ = nullptr;
-        // }else{
+        if ((get_clock()->now() - rclcpp::Time(detection_frame_->header.stamp)) > rclcpp::Duration::from_seconds(0.5)) {
+            detection_frame_ = nullptr;
+        }else{
             std::lock_guard<std::mutex> lock(detection_frame_mutex);
             cv::Mat image = drawBoundingBox(detection_frame_->image, current_detection);
             displayFrameWithMetadata(image, "Current Frame",
                                detection_frame_->header, "CURRENT");
-            detection_frame_ = nullptr;
-        // }
+            // detection_frame_ = nullptr;
+        }
     }
     
     // Display delayed frame if available
