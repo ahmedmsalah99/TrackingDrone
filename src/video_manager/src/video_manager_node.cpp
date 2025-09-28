@@ -134,7 +134,8 @@ void VideoManager::displayFrames()
         displayFrameWithMetadata(current_frame_->image, "Current Frame", 
                                current_frame_->header, "CURRENT");
     }else if(detection_frame_ && !detection_frame_->image.empty()){
-        if ((get_clock()->now() - rclcpp::Time(detection_frame_->header.stamp)) > rclcpp::Duration::from_seconds(0.5)) {
+        // std::cout << (get_clock()->now() - rclcpp::Time(detection_frame_->header.stamp)).seconds() << std::endl;
+        if ((get_clock()->now() - rclcpp::Time(detection_frame_->header.stamp)) > rclcpp::Duration::from_seconds(0.7)) {
             detection_frame_ = nullptr;
         }else{
             std::lock_guard<std::mutex> lock(detection_frame_mutex);
