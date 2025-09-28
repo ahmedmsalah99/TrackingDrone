@@ -98,7 +98,7 @@ public:
         // Higher inertia → track relies more on past motion when associating
         // Whether to use ByteTrack-style association
         //GIoU = Generalized IoU, an improvement over IoU that accounts for cases where boxes don’t overlap.
-        oc_tracker_ = std::make_shared<ocsort::OCSort>(0.2, 25, 3, 0.3, 25, "giou", 0.1, false);
+        oc_tracker_ = std::make_shared<ocsort::OCSort>(0.2, 25, 1, 0.3, 25, "giou", 0.9, false);
 
         // params.resize = true;
         // params.desc_npca = cv::TrackerKCF::GRAY;  // fallback non-compressed
@@ -148,21 +148,41 @@ private:
         current_frame_ = shm_msgs::toCvShare(msg);
         current_stamp_ = msg->header.stamp;
         // track the frame 
-        std::lock_guard<std::mutex> lock(tracking_mutex);
-        trackFrame();
+        // std::lock_guard<std::mutex> lock(tracking_mutex);
+        // trackFrame();
+        bool new_det = false;
+        if(current_detections_stamp_.nanoseconds() != 0 && !detection_frame_.empty()){
+            rclcpp::Time time_now = get_clock()->now() - delay_time;
+            if(time_now > current_detections_stamp_ && (time_now - current_detections_stamp_) < delay_time){
+                // new detection available - update our tracked detection
+                new_det = true;
+                std::lock_guard<std::mutex> lock(det_mutex);
+                tracked_detections_.clear();
+                tracked_detections_.reserve(current_detections_.size());
+                std::transform(
+                    current_detections_.begin(), current_detections_.end(),
+                    std::back_inserter(tracked_detections_),
+                    [](const Detection& d){ return FloatDetection(d); });
+                std::cout << "tracked_detections_.size() " << tracked_detections_.size() << std::endl;
+                current_detections_stamp_ = rclcpp::Time(0);
+            }
+        }
         if(!tracked_detections_.empty()){
             // std::cout << "publishing tracked frames" << std::endl;
             Eigen::Matrix<float, Eigen::Dynamic, 6> data(tracked_detections_.size(),6);
-            data = detectionsToMatrix(tracked_detections_);
+            if(new_det){
+                data = detectionsToMatrix(tracked_detections_);
+                std::vector<Eigen::RowVectorXf> res = oc_tracker_->update(data);
+                detections_msg = tracksToMsg(res);
+            }
             
-
-            std::vector<Eigen::RowVectorXf> res = oc_tracker_->update(data);
+            // std::cout << "res is " << std::endl;
             // for (const auto& row : res) {
             //     std::cout << row << std::endl;
             // }
             // std::cout << " " << std::endl;
-            common_msgs::msg::Detections detections_msg = tracksToMsg(res);
             
+            detections_msg.stamp = get_clock()->now() - delay_time;  
             detections_pub_->publish(detections_msg);
         }else{
             std::cout << "tracked frames are empty for some reason" << std::endl;
@@ -190,7 +210,7 @@ private:
         const std::vector<Eigen::RowVectorXf>& tracks)
     {
         common_msgs::msg::Detections msg;
-        msg.stamp = get_clock()->now() - delay_time;  
+        
 
         // Optionally set current_target_id (e.g., first active track)
         msg.current_target_id = -1;
@@ -248,7 +268,7 @@ private:
         //     "/home/stark/stuff/Projects/TrackingDrone/ros2_ws/results"
         // );
 
-        std::vector<Detection> detections = detector_->detect(detection_frame,0.35);
+        std::vector<Detection> detections = detector_->detect(detection_frame,0.45);
         std::lock_guard<std::mutex> lock(det_mutex);
         detection_frame_ = detection_frame.clone();
         // Track detections to present
@@ -840,6 +860,7 @@ void saveTrackedDetections(
 
     std::vector<cv::Ptr<cv::Tracker>> trackers_;
     cv::TrackerKCF::Params params;
+    common_msgs::msg::Detections detections_msg;
 };
 
 int main(int argc, char** argv) {
