@@ -42,7 +42,21 @@ public:
         tracking_fps_ = get_parameter("tracking_fps").as_double();
 
         // params.max_patch_size = 150;
+        // params.desc_pca = cv::TrackerKCF::GRAY;
+        // params.desc_npca = 0;
+        // params.compressed_size = 1;
+        // params.compressed_size = 2;
         params.resize = true;
+        // params.desc_npca = cv::TrackerKCF::GRAY;  // no compression
+        // params.desc_pca  = 0;
+        // params.compress_feature = false;          // turn PCA off
+
+        params.desc_npca = cv::TrackerKCF::GRAY;  // fallback non-compressed
+        params.desc_pca  = cv::TrackerKCF::CN;    // 10 channels
+        params.compress_feature = false;
+        params.compressed_size = 1;               // ≤ 10
+
+
         // Initialize YOLO detector
         detector_ = std::make_unique<YOLODetector>(model_path, labels_path, use_gpu);
 
