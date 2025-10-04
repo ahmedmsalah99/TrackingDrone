@@ -44,7 +44,8 @@ private:
     shm_msgs::CvImageConstPtr delayed_frame_;
     
     // Detection storage
-    std::vector<common_msgs::msg::Detection> current_detection;
+    std::vector<common_msgs::msg::Detection> current_detections;
+    int current_target_id = -1;
     // Display parameters
     static constexpr int DISPLAY_WIDTH = 640;
     static constexpr int DISPLAY_HEIGHT = 480;

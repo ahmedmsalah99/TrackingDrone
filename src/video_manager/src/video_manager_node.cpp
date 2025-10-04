@@ -100,9 +100,8 @@ void VideoManager::detectionCallback(const common_msgs::msg::Detections::SharedP
     if (detection_frame_->image.empty()) return;
     
     
-    current_detection = detmsg->detections;
-    
-
+    current_detections = detmsg->detections;
+    current_target_id = detmsg->current_target_id;
 }
 
 void VideoManager::delayedFrameCallback(const shm_msgs::msg::Image1m::SharedPtr msg)
@@ -127,8 +126,6 @@ void VideoManager::delayedFrameCallback(const shm_msgs::msg::Image1m::SharedPtr 
 
 void VideoManager::displayFrames()
 {
-    
-
     // Display current frame if available
     if (!detection_frame_ && current_frame_ && !current_frame_->image.empty()) {
         displayFrameWithMetadata(current_frame_->image, "Current Frame", 
@@ -139,7 +136,7 @@ void VideoManager::displayFrames()
             detection_frame_ = nullptr;
         }else{
             std::lock_guard<std::mutex> lock(detection_frame_mutex);
-            cv::Mat image = drawBoundingBox(detection_frame_->image, current_detection);
+            cv::Mat image = drawBoundingBox(detection_frame_->image, current_detections, current_target_id);
             displayFrameWithMetadata(image, "Current Frame",
                                detection_frame_->header, "CURRENT");
             // detection_frame_ = nullptr;

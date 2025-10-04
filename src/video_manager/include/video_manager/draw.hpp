@@ -51,9 +51,11 @@ static inline std::vector<cv::Scalar> generateColors(const std::vector<std::stri
  * @param image Image on which to draw.
  * @param detections Vector of detections.
  */
-static inline cv::Mat drawBoundingBox(const cv::Mat &frame, const std::vector<common_msgs::msg::Detection> &detections, const float confidence_threshold = 0.0)
+static inline cv::Mat drawBoundingBox(const cv::Mat &frame, const std::vector<common_msgs::msg::Detection> &detections, int current_target_id,
+                                    cv::Scalar color = cv::Scalar(0, 0, 255) , const float confidence_threshold = 0.0)
 {
     cv::Mat image = frame.clone();
+    cv::Scalar curr_color = color;
     // Iterate through each detection to draw bounding boxes and labels
     for (const auto &detection : detections)
     {
@@ -61,13 +63,17 @@ static inline cv::Mat drawBoundingBox(const cv::Mat &frame, const std::vector<co
         if (detection.conf <= confidence_threshold)
             continue;
 
-        // Select color based on object ID for consistent coloring
-        cv::Scalar color(0, 0, 255); // B, G, R
-
+        // // Select color based on object ID for consistent coloring
+        // cv::Scalar color(0, 0, 255); // B, G, R
+        if(current_target_id == detection.id){
+            curr_color = cv::Scalar(0, 255, 0);
+        }else{
+            curr_color = color;
+        }
         // Draw the bounding box rectangle
         cv::rectangle(image, cv::Point(detection.x, detection.y),
                         cv::Point(detection.x + detection.width, detection.y + detection.height),
-                        color, 2, cv::LINE_AA);
+                        curr_color, 2, cv::LINE_AA);
 
     }
     return image;

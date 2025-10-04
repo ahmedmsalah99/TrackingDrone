@@ -69,6 +69,7 @@ struct Detection
     BoundingBox box;
     float conf{};
     int classId{};
+    int objectId{};
     Detection(BoundingBox box, float conf, int classId)
         : box(box), classId(classId), conf(conf) {}
 };
