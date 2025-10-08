@@ -62,10 +62,16 @@ public:
     setupCommunications();
 
     // Setup timers
-    detection_timer_ = create_wall_timer(
-        std::chrono::milliseconds(static_cast<int>(1000.0 / detection_fps_)),
+    auto period = rclcpp::Duration::from_seconds(1.0 / detection_fps_);
+
+    detection_timer_ = rclcpp::create_timer(
+        this->get_node_base_interface(),         // node_base
+        this->get_node_timers_interface(),       // node_timers
+        this->get_clock(),                       // clock (so it can follow /clock)
+        period,                                  // rclcpp::Duration
         std::bind(&DetectionAndMOTNode::detectionCallback, this),
-        detection_timer_group_);
+        detection_timer_group_                   // optional callback group
+    );
 
     current_target_ << -1, -1, -1, -1, -1, -1;
     // Initialize OCSort tracker

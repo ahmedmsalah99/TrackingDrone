@@ -1,12 +1,9 @@
 #include "video_manager/draw.hpp"
 #include "video_manager/video_manager.hpp"
-#include <chrono>
 #include <iomanip>
 #include <message_filters/cache.h>
 #include <message_filters/subscriber.h>
 #include <sstream>
-
-using namespace std::chrono_literals;
 
 VideoManager::VideoManager(const rclcpp::NodeOptions &options)
     : Node("video_manager", options) {
@@ -199,9 +196,9 @@ void VideoManager::displayFrameWithMetadata(const cv::Mat &frame,
               << " ms\n";
 
   // Add current time
-  auto current_time = std::chrono::system_clock::now();
-  auto time_t = std::chrono::system_clock::to_time_t(current_time);
-  metadata_ss << "Display Time: "
+  rclcpp::Time current_time = this->now(); // Uses node’s clock
+  std::time_t time_t = static_cast<std::time_t>(current_time.seconds());
+  metadata_ss << "Sim Time: "
               << std::put_time(std::localtime(&time_t), "%H:%M:%S");
 
   // Overlay metadata on frame
@@ -211,20 +208,19 @@ void VideoManager::displayFrameWithMetadata(const cv::Mat &frame,
   cv::imshow(window_name, display_frame);
 }
 
-std::string
-VideoManager::formatTimestamp(const builtin_interfaces::msg::Time &timestamp) {
+std::string VideoManager::formatTimestamp(const builtin_interfaces::msg::Time &timestamp) {
   // Convert ROS time to system time for display
-  auto time_point = std::chrono::system_clock::time_point(
-      std::chrono::seconds(timestamp.sec) +
-      std::chrono::nanoseconds(timestamp.nanosec));
-  auto time_t = std::chrono::system_clock::to_time_t(time_point);
+  rclcpp::Time time_point(timestamp);
+
+  // Convert to time_t (seconds since epoch)
+  std::time_t time_t_value = static_cast<std::time_t>(time_point.seconds());
 
   std::stringstream ss;
-  ss << std::put_time(std::localtime(&time_t), "%H:%M:%S");
+  ss << std::put_time(std::localtime(&time_t_value), "%H:%M:%S");
 
   // Add milliseconds
-  auto ms = (timestamp.nanosec / 1000000) % 1000;
-  ss << "." << std::setfill('0') << std::setw(3) << ms;
+  int ms = static_cast<int>((time_point.nanoseconds() % 1000000000) / 1000000);
+  ss << "." << std::setw(3) << std::setfill('0') << ms;
 
   return ss.str();
 }
