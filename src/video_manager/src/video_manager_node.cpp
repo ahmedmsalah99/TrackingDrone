@@ -27,20 +27,13 @@ VideoManager::VideoManager(const rclcpp::NodeOptions &options)
           std::bind(&VideoManager::detectionCallback, this,
                     std::placeholders::_1));
 
-  delayed_frame_subscription_ =
-      this->create_subscription<shm_msgs::msg::Image1m>(
-          "/stream_manager/delayed_frame", qos,
-          std::bind(&VideoManager::delayedFrameCallback, this,
-                    std::placeholders::_1));
 
   // Initialize OpenCV windows
   cv::namedWindow("Current Frame", cv::WINDOW_AUTOSIZE);
-  cv::namedWindow("Delayed Frame", cv::WINDOW_AUTOSIZE);
 
   RCLCPP_INFO(this->get_logger(), "VideoManager node initialized successfully");
   RCLCPP_INFO(this->get_logger(), "Subscribed to:");
   RCLCPP_INFO(this->get_logger(), "  - /stream_manager/current_frame");
-  RCLCPP_INFO(this->get_logger(), "  - /stream_manager/delayed_frame");
 }
 
 VideoManager::~VideoManager() {
@@ -107,28 +100,6 @@ void VideoManager::detectionCallback(
   current_target_id = detmsg->current_target_id;
 }
 
-void VideoManager::delayedFrameCallback(
-    const shm_msgs::msg::Image1m::SharedPtr msg) {
-  try {
-    delayed_frame_ = shm_msgs::toCvShare(msg);
-
-    RCLCPP_DEBUG(this->get_logger(),
-                 "Received delayed frame: %dx%d, encoding: %s", msg->width,
-                 msg->height, msg->encoding.data.data());
-
-    // Calculate transport time
-    auto now = this->get_clock()->now();
-    auto transport_time_ns = (now - delayed_frame_->header.stamp).nanoseconds();
-    auto transport_time_ms = transport_time_ns / 1000000.0;
-
-    RCLCPP_DEBUG(this->get_logger(), "Delayed frame transport time: %.3f ms",
-                 transport_time_ms);
-
-  } catch (const std::exception &e) {
-    RCLCPP_ERROR(this->get_logger(), "Error processing delayed frame: %s",
-                 e.what());
-  }
-}
 
 void VideoManager::displayFrames() {
   // Display current frame if available
@@ -149,12 +120,6 @@ void VideoManager::displayFrames() {
                                "CURRENT");
       // detection_frame_ = nullptr;
     }
-  }
-
-  // Display delayed frame if available
-  if (delayed_frame_ && !delayed_frame_->image.empty()) {
-    displayFrameWithMetadata(delayed_frame_->image, "Delayed Frame",
-                             delayed_frame_->header, "DELAYED");
   }
 
   // Process OpenCV events
