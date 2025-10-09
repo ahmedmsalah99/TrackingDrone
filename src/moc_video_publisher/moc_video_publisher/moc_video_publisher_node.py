@@ -9,9 +9,14 @@ import os
 class MocVideoPublisher(Node):
     def __init__(self):
         super().__init__('moc_video_publisher')
+        # ---- Declare parameters with default values ----
+        self.declare_parameter('video_name', 'cars2.mp4')
+        # ---- Read parameters ----
+        video_name = self.get_parameter('video_name').get_parameter_value().string_value
+
         self.publisher_ = self.create_publisher(Image, '/camera/image_raw', 10)
         self.bridge = CvBridge()
-        self.video_path = os.path.join(get_package_share_directory('moc_video_publisher'), 'videos', 'cars2.mp4')
+        self.video_path = os.path.join(get_package_share_directory('moc_video_publisher'), 'videos', video_name)
         self.cap = cv2.VideoCapture(self.video_path)
         if not self.cap.isOpened():
             self.get_logger().error(f"Could not open video file: {self.video_path}")

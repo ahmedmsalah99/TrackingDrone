@@ -8,16 +8,26 @@
 VideoManager::VideoManager(const rclcpp::NodeOptions &options)
     : Node("video_manager", options) {
   RCLCPP_INFO(this->get_logger(), "Initializing VideoManager node");
+    declare_parameter<int>("DISPLAY_WIDTH", 640);
+    declare_parameter<int>("DISPLAY_HEIGHT", 480);
+    declare_parameter<int>("num_frames_cached", 50);
+    declare_parameter<double>("detection_time_out", 0.7);
+
+    // Get parameters
+    DISPLAY_WIDTH = get_parameter("DISPLAY_WIDTH").as_int();
+    DISPLAY_HEIGHT = get_parameter("DISPLAY_HEIGHT").as_int();
+    int num_frames_cached = get_parameter("num_frames_cached").as_int();
+    detection_time_out = get_parameter("detection_time_out").as_double();
 
   // Create subscriptions to the stream manager topics
-  rclcpp::QoS qos(rclcpp::KeepLast(10));
+  rclcpp::QoS qos(rclcpp::KeepLast(1));
 
   current_frame_subscription_ =
       std::make_shared<message_filters::Subscriber<shm_msgs::msg::Image1m>>(
           this, "/stream_manager/current_frame");
   frame_cache_ =
       std::make_shared<message_filters::Cache<shm_msgs::msg::Image1m>>(
-          *current_frame_subscription_, 50);
+          *current_frame_subscription_, num_frames_cached);
   frame_cache_->registerCallback(std::bind(&VideoManager::currentFrameCallback,
                                            this, std::placeholders::_1));
 
@@ -54,18 +64,10 @@ void VideoManager::currentFrameCallback(
 
 void VideoManager::detectionCallback(
     const common_msgs::msg::Detections::SharedPtr detmsg) {
-  // std::vector<shm_msgs::msg::Image1m::ConstSharedPtr> msgs =
-  // frame_cache_->getInterval(msg->header.stamp, now);
   rclcpp::Time oldesttime = frame_cache_->getOldestTime();
   rclcpp::Time latesttime = frame_cache_->getLatestTime();
   rclcpp::Time detection_stamp(detmsg->stamp);
-  // RCLCPP_WARN(
-  //         this->get_logger(),
-  //         "Detection timestamp is older than cached frames. "
-  //         "Detection time: %.3f, Oldest cached frame time: %.3f, latest time:
-  //         %.3f", detection_stamp.seconds(), oldesttime.seconds(),
-  //         latesttime.seconds()
-  //     );
+
   if (detection_stamp < oldesttime) {
 
     RCLCPP_WARN(this->get_logger(),
@@ -107,10 +109,8 @@ void VideoManager::displayFrames() {
     displayFrameWithMetadata(current_frame_->image, "Current Frame",
                              current_frame_->header, "CURRENT");
   } else if (detection_frame_ && !detection_frame_->image.empty()) {
-    // std::cout << (get_clock()->now() -
-    // rclcpp::Time(detection_frame_->header.stamp)).seconds() << std::endl;
     if ((get_clock()->now() - rclcpp::Time(detection_frame_->header.stamp)) >
-        rclcpp::Duration::from_seconds(0.7)) {
+        rclcpp::Duration::from_seconds(detection_time_out)) {
       detection_frame_ = nullptr;
     } else {
       std::lock_guard<std::mutex> lock(detection_frame_mutex);
@@ -118,7 +118,6 @@ void VideoManager::displayFrames() {
                                       current_detections, current_target_id);
       displayFrameWithMetadata(image, "Current Frame", detection_frame_->header,
                                "CURRENT");
-      // detection_frame_ = nullptr;
     }
   }
 

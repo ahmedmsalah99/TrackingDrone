@@ -48,8 +48,9 @@ private:
   std::vector<common_msgs::msg::Detection> current_detections;
   int current_target_id = -1;
   // Display parameters
-  static constexpr int DISPLAY_WIDTH = 640;
-  static constexpr int DISPLAY_HEIGHT = 480;
+  int DISPLAY_WIDTH = 640;
+  int DISPLAY_HEIGHT = 480;
+  double detection_time_out;
 };
 
 #endif // VIDEO_MANAGER_HPP
