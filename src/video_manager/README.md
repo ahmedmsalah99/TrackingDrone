@@ -1,109 +1,60 @@
-# VideoManager
+# Video Manager
 
-A ROS2 package for displaying video frames with metadata overlay from StreamManager topics.
+The Video Manager is a ROS2 node that displays video frames with overlaid detection metadata. It subscribes to video frames and detections, caches frames for overlaying past detections, and provides real-time visualization.
 
 ## Overview
 
-VideoManager subscribes to video frame topics published by StreamManager and displays them in OpenCV windows with overlaid metadata information. It provides real-time visualization of both current and delayed video frames.
+This module handles video display with detection overlays, managing frame caching for temporal visualization. It supports scaling for performance and smooth transitions between detection and normal display modes.
 
-## Features
+## Key Features
 
-- Subscribes to `/stream_manager/current_frame` and `/stream_manager/delayed_frame` topics
-- Displays frames in separate OpenCV windows with metadata overlay
-- 20ms timer-based display updates (50 Hz)
-- Thread-safe frame handling
-- Automatic frame resizing for display
-- Real-time metadata including:
-  - Frame type (CURRENT/DELAYED)
-  - Frame ID and timestamp
-  - Frame dimensions
-  - Frame age (time since capture)
-  - Current display time
+- Real-time video display with detection overlays
+- Frame caching for past detection visualization
+- Automatic scaling for CPU optimization
+- Configurable display transitions
+- ROS2 topic subscription for frames and detections
 
-## Dependencies
+## Video Manager Notes
 
-- ROS2 (tested with Humble)
-- OpenCV
-- shm_msgs (shared memory message package)
+### 1. Frame Caching
+`num_frames_cached` is attached to the frames FPS and detection delay. The cached frames are used to display detections in past overlaid.
 
-## Topics
+### 2. Display Fallback
+Once no detections are available and detection time out passed, the most recent frame is displayed instead.
 
-### Subscribed Topics
+### 3. Display Transition Control
+The transition between detections display and normal display is controlled using `detection_time_out` variable.
 
-- `/stream_manager/current_frame` (shm_msgs/msg/Image1m): Current video frames from StreamManager
-- `/stream_manager/delayed_frame` (shm_msgs/msg/Image1m): Delayed video frames from StreamManager
+### 4. Scaling Optimization
+Scaling down only applies here for better CPU usage.
+
+## Installation
+
+1. Ensure ROS2 Humble and OpenCV are installed.
+2. Build with `colcon build --packages-select video_manager`.
 
 ## Usage
 
-### Building
-
+Run the node:
 ```bash
-cd /path/to/your/ros2_workspace
-colcon build --packages-select VideoManager
+ros2 run video_manager video_manager_node
 ```
 
-### Running
-
-```bash
-# Source the workspace
-source install/setup.bash
-
-# Run the VideoManager node directly
-ros2 run VideoManager video_manager_node
-
-# Or use the launch file
-ros2 launch VideoManager video_manager.launch.py
-```
-
-### Launch with StreamManager
-
-Make sure StreamManager is running and publishing to the required topics:
-
-```bash
-# Terminal 1: Run StreamManager
-ros2 run StreamManager stream_manager_node
-
-# Terminal 2: Run VideoManager
-ros2 run VideoManager video_manager_node
-```
+Subscribed topics:
+- `/stream_manager/current_frame` (shm_msgs::msg::Image1m)
+- `/detections` (common_msgs::msg::Detections)
 
 ## Configuration
 
-The VideoManager uses the following default parameters:
+Configure caching, scaling, and timeout parameters in the node settings.
 
-- Display update rate: 50 Hz (20ms timer)
-- Maximum display size: 640x480 pixels
-- QoS: KeepLast(10)
+## Dependencies
 
-## Display Windows
+- ROS2 Humble
+- OpenCV
+- shm_msgs
+- common_msgs
 
-The package creates two OpenCV windows:
+## License
 
-1. **Current Frame**: Displays the latest frames from `/stream_manager/current_frame`
-2. **Delayed Frame**: Displays the delayed frames from `/stream_manager/delayed_frame`
-
-Each window shows the frame with overlaid metadata including timestamp, frame ID, dimensions, and age information.
-
-## Implementation Details
-
-- Uses shared memory messages (shm_msgs) for efficient image transport
-- Thread-safe frame storage with mutex protection
-- Automatic frame scaling for display purposes
-- Real-time metadata overlay with green text on black background
-- Proper resource cleanup on shutdown
-
-## Troubleshooting
-
-### No frames displayed
-- Ensure StreamManager is running and publishing frames
-- Check topic names match: `/stream_manager/current_frame` and `/stream_manager/delayed_frame`
-- Verify shm_msgs package is properly installed
-
-### Performance issues
-- The display timer runs at 50 Hz (20ms) as specified
-- Frame processing is optimized for real-time display
-- Large frames are automatically resized for display
-
-### OpenCV window issues
-- Ensure X11 forwarding is enabled if running over SSH
-- Check OpenCV installation and display environment
+MIT License
