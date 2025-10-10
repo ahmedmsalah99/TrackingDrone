@@ -9,8 +9,6 @@
 #include <detection_and_mot/nanoflann.hpp>
 #include <detection_and_mot/point.hpp>
 #include <memory>
-#include <message_filters/cache.h>
-#include <message_filters/subscriber.h>
 #include <ocsort/OCSort.hpp>
 #include <opencv2/opencv.hpp>
 #include <rclcpp/executors/multi_threaded_executor.hpp>
@@ -32,7 +30,6 @@ public:
     declare_parameter<std::string>("labels_path",
                                    shared_path + "/resources/coco_mod.names");
     declare_parameter<bool>("use_gpu", false);
-    declare_parameter<int>("cache_size", 30);
     declare_parameter<double>("detection_fps", 10.0);
     declare_parameter<double>("delay_time", 0.25);
 
@@ -40,7 +37,6 @@ public:
     std::string model_path = get_parameter("model_path").as_string();
     std::string labels_path = get_parameter("labels_path").as_string();
     bool use_gpu = get_parameter("use_gpu").as_bool();
-    cache_size_ = get_parameter("cache_size").as_int();
     detection_fps_ = get_parameter("detection_fps").as_double();
     delay_time =
         rclcpp::Duration::from_seconds(get_parameter("delay_time").as_double());
@@ -92,16 +88,21 @@ private:
     // Subscriber for current frame with cache
     rclcpp::SubscriptionOptions sub_options;
     sub_options.callback_group = frame_sub_group_;
-    frame_sub_ =
-        std::make_shared<message_filters::Subscriber<shm_msgs::msg::Image1m>>(
-            this, "/stream_manager/current_frame", rmw_qos_profile_default,
-            sub_options);
-    frame_cache_ =
-        std::make_shared<message_filters::Cache<shm_msgs::msg::Image1m>>(
-            *frame_sub_, cache_size_);
-    frame_cache_->registerCallback(std::bind(
-        &DetectionAndMOTNode::frameCallback, this, std::placeholders::_1));
+    // frame_sub_ =
+    //     std::make_shared<message_filters::Subscriber<shm_msgs::msg::Image1m>>(
+    //         this, "/stream_manager/current_frame", rmw_qos_profile_default,
+    //         sub_options);
+    // frame_cache_ =
+    //     std::make_shared<message_filters::Cache<shm_msgs::msg::Image1m>>(
+    //         *frame_sub_, cache_size_);
+    // frame_cache_->registerCallback(std::bind(
+    //     &DetectionAndMOTNode::frameCallback, this, std::placeholders::_1));
 
+    frame_sub_ = create_subscription<shm_msgs::msg::Image1m>(
+        "/stream_manager/current_frame", 10,
+        [this](const shm_msgs::msg::Image1m::ConstSharedPtr msg) {
+          this->frameCallback(msg);
+        },sub_options);
     // Publisher for detections
     detections_pub_ =
         create_publisher<common_msgs::msg::Detections>("detections", 10);
@@ -460,7 +461,6 @@ private:
   // };
 
   // configs
-  size_t cache_size_;
   double detection_fps_;
   double tracking_fps_;
   rclcpp::Duration delay_time{0, 0};
@@ -480,9 +480,7 @@ private:
   std::shared_ptr<ocsort::OCSort> oc_tracker_;
 
   // ROS2 interfaces
-  std::shared_ptr<message_filters::Subscriber<shm_msgs::msg::Image1m>>
-      frame_sub_;
-  std::shared_ptr<message_filters::Cache<shm_msgs::msg::Image1m>> frame_cache_;
+  rclcpp::Subscription<shm_msgs::msg::Image1m>::SharedPtr frame_sub_;
   rclcpp::Publisher<common_msgs::msg::Detections>::SharedPtr detections_pub_;
   rclcpp::Service<common_msgs::srv::ChangeTarget>::SharedPtr target_change_srv_;
   rclcpp::TimerBase::SharedPtr detection_timer_;

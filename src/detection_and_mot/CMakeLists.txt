@@ -15,7 +15,6 @@ find_package(rclcpp REQUIRED)
 find_package(rcpputils REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(pcl_conversions REQUIRED)
-find_package(message_filters REQUIRED)
 find_package(sensor_msgs REQUIRED)
 
 find_package(ament_cmake REQUIRED)
@@ -50,7 +49,6 @@ ament_target_dependencies(
   "rclcpp"
   "shm_msgs"
   "common_msgs"
-  "message_filters"
   "cv_bridge"
 )
 
