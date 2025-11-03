@@ -1,18 +1,12 @@
-<div align="left" style="position: relative;">
-<img src="https://pic.onlinewebfonts.com/thumbnails/icons_665129.svg" align="right" width="30%" style="margin: -20px 0 0 20px;">
 <h1>TRACKING DRONE</h1>
-<p align="left">
-	<em><code>❯ REPLACE-ME</code></em>
-</p>
-<p align="left">
-	<!-- Shields.io badges disabled, using skill icons. --></p>
-<p align="left">Built with the tools and technologies:</p>
-<p align="left">
-	<a href="https://skillicons.dev">
-		<img src="https://skillicons.dev/icons?i=cpp,cmake,md">
-	</a></p>
-</div>
-<br clear="right">
+
+![cover](https://pic.onlinewebfonts.com/thumbnails/icons_665129.svg)
+
+![License](https://img.shields.io/badge/license-AGPLv3-blue.svg)
+![C++](https://img.shields.io/badge/language-C++-blue.svg)
+![ONNX Runtime](https://img.shields.io/badge/ONNX_Runtime-v1.20.1-brightgreen.svg)
+![OpenCV](https://img.shields.io/badge/OpenCV-4.5.5-brightgreen.svg)
+![CMake](https://img.shields.io/badge/CMake-3.22.1-blue.svg)
 
 ##  Table of Contents
 
