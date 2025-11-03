@@ -1,0 +1,106 @@
+<?xml version="1.0" ?>
+<sdf version="1.8">
+  <model name="test">
+<static>true</static>   
+ <link name="testlink">
+
+      <visual name="Plane">
+        <geometry>
+          <mesh>
+            <uri>model://osm_environment/meshes/BusGameMap.dae</uri>
+            <submesh>
+              <name>Plane</name>
+            </submesh>
+          </mesh>
+        </geometry>
+        <material>
+          <diffuse>1.0 1.0 1.0 1.0</diffuse>
+          <specular>0.0 0.0 0.0 1.0</specular>
+          <pbr>
+            <metal/>
+          </pbr>
+        </material>
+      </visual>
+      <visual name="bldg5">
+        <geometry>
+          <mesh>
+            <uri>model://osm_environment/meshes/BusGameMap.dae</uri>
+            <submesh>
+              <name>bldg5</name>
+            </submesh>
+          </mesh>
+        </geometry>
+        <material>
+          <diffuse>1.0 1.0 1.0 1.0</diffuse>
+          <specular>0.0 0.0 0.0 1.0</specular>
+          <pbr>
+            <metal/>
+          </pbr>
+        </material>
+      </visual>
+      <visual name="bldg5.001">
+        <geometry>
+          <mesh>
+            <uri>model://osm_environment/meshes/BusGameMap.dae</uri>
+            <submesh>
+              <name>bldg5.001</name>
+            </submesh>
+          </mesh>
+        </geometry>
+        <material>
+          <diffuse>1.0 1.0 1.0 1.0</diffuse>
+          <specular>0.0 0.0 0.0 1.0</specular>
+          <pbr>
+            <metal>
+              <albedo_map>model://osm_environment/meshes/vo1.jpg</albedo_map>
+            </metal>
+          </pbr>
+        </material>
+      </visual>
+      <visual name="sirus city">
+        <geometry>
+          <mesh>
+            <uri>model://osm_environment/meshes/BusGameMap.dae</uri>
+            <submesh>
+              <name>sirus city</name>
+            </submesh>
+          </mesh>
+        </geometry>
+     
+      </visual>
+      <light name="Light.001" type="point">
+        <diffuse>1.0 1.0 1.0 1.0</diffuse>
+        <attenuation>
+          <range>40.0</range>
+          <linear>0.0</linear>
+          <quadratic>0.0</quadratic>
+          <constant>1.0</constant>
+        </attenuation>
+        <cast_shadows>true</cast_shadows>
+        <intensity>1.0</intensity>
+      </light>
+      <light name="Light" type="point">
+        <diffuse>1.0 1.0 1.0 1.0</diffuse>
+        <attenuation>
+          <range>40.0</range>
+          <linear>0.0</linear>
+          <quadratic>0.0</quadratic>
+          <constant>1.0</constant>
+        </attenuation>
+        <cast_shadows>true</cast_shadows>
+        <intensity>1.0</intensity>
+      </light>
+      <collision name="collision">
+        <geometry>
+          <mesh>
+            <uri>model://osm_environment/meshes/BusGameMap.dae</uri>
+          </mesh>
+        </geometry>
+        <surface/>
+        <contact/>
+        <collide_bitmask>0x01</collide_bitmask>
+      </collision>
+    </link>
+  </model>
+  <static>true</static>
+</sdf>
