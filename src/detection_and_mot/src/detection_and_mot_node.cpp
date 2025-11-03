@@ -194,13 +194,13 @@ private:
       return;
     }
     // Store detection frame and points
-    cv::Mat detection_frame = current_frame_->image.clone();
+    cv::Mat detection_frame = current_frame_->image;
     rclcpp::Time detection_stamp(current_frame_->header.stamp);
     // Run detection
     std::vector<Detection> detections =
         detector_->detect(detection_frame, 0.35);
     std::lock_guard<std::mutex> lock(det_mutex);
-    detection_frame_ = detection_frame.clone();
+    detection_frame_ = detection_frame;
 
     // assign member variables
     current_detections_ = detections;
