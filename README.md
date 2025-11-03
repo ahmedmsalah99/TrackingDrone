@@ -15,7 +15,6 @@
 - [ Project Structure](#-project-structure)
 - [ Getting Started](#-getting-started)
   - [ Prerequisites](#-prerequisites)
-  - [ Installation](#-installation)
   - [ Build and Run](#-build-and-run)
   - [ Usage](#-usage)
   - [ Params](#-params)
@@ -27,7 +26,7 @@
 
 ##  Overview
 
-<code> A ROS2-based project for object detection and multi-object tracking (MOT) using YOLO models and OC-Sort algorithm, designed for drone applications.
+<code> A **ROS2-based** project for object detection and multi-object tracking (**MOT**) using **YOLO** models and **OC-Sort** algorithm, designed for drone applications.
 </code>
 
 ---
@@ -35,12 +34,12 @@
 ##  Features
 
 
-* **Object Detection:** Employs YOLO models for real-time object detection.  
-* **Multi-Object Tracking (MOT):** Utilizes OC-Sort for robust tracking of detected objects.  
-* **ROS2 Integration:** Seamlessly integrates with ROS2 for robotic applications.  
+* **Object Detection:** Employs **YOLO** models for **real-time** object detection.  
+* **Multi-Object Tracking (MOT):** Utilizes **OC-Sort** for robust tracking of detected objects.  
+* **ROS2 Integration:** Seamlessly integrates with **ROS2** for robotic applications.  
 * **Modular Design:** Components are designed for flexibility and reusability.  
-* **Video Stream Processing:** Processes video frames from various sources (simulated or real-time).  
-* **Configurable Parameters:** Allows fine-tuning of detection and tracking parameters.
+* **Video Stream Processing:** Processes video frames from various sources (**simulated or real-time**).  
+* **Configurable Parameters:** Allows **fine-tuning** of detection and tracking parameters.
 
 
 
@@ -72,37 +71,32 @@ Before getting started with TrackingDrone, ensure your runtime environment meets
 - **ONNX Runtime**
 - **Eigen3**
 
-###  Installation
-
-Install TrackingDrone using one of the following methods:
 
 **Build and Run:**
 
-1. Clone the TrackingDrone repository:
+1. Clone the **TrackingDrone** repository:
 ```sh
 ❯ git clone --recursive https://github.com/ahmedmsalah99/TrackingDrone.git
 ```
 
-2. Download resources and place them in the right places:
-```sh
-❯ https://1drv.ms/f/c/ba4a36e37e136c1e/Espk4TyxO-hJscBR4_XtCf4BybTYcVzWY7BKRy2OZeNyQw?e=z4Fg1S
-```
-You can download the suitable onnx-runtime for your system from the following link:
-```sh
-❯ https://github.com/microsoft/onnxruntime/releases
-```
-* Rename the folder to onnxruntime and place it in src/detection_and_mot/
+2. Download the resources from **OneDrive** and place them in the right places:
+[🔗 OneDrive Folder](https://1drv.ms/f/c/ba4a36e37e136c1e/Espk4TyxO-hJscBR4_XtCf4BybTYcVzWY7BKRy2OZeNyQw?e=z4Fg1S)
 
-* You can also convert your model on your device to onnx and use it instead of the provided model which is going to run faster.
+* You can download the suitable **onnx-runtime** for your system from the following link:
+[ONNX-RUNTIME](https://github.com/microsoft/onnxruntime/releases)
 
-* Also, in src/detection_and_mot/lib the ocsort library is there as a shared library. If you need to build it on your own use the modified repo: https://github.com/ahmedmsalah99/OC_SORT
+* Rename the folder to **onnxruntime** and place it in **src/detection_and_mot**
 
-3. Build. In the work space folder.
+* You can also convert your model on your device to **onnx** and use it instead of the provided model which is going to run faster.
+
+* Also, in **src/detection_and_mot/lib** the **oc-sort** library is there as a shared library. If you need to build it on your own use the modified repo: https://github.com/ahmedmsalah99/OC_SORT
+
+3. **In the work space folder:**
 ```sh
 ❯ colcon build
 ```
 
-4. Setup environment
+4. **Setup the environment:**
 ```sh
 ❯ source install/setup.bash
 ❯ export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
@@ -111,7 +105,7 @@ You can download the suitable onnx-runtime for your system from the following li
 ```
 
 
-5. Launch the system
+5. **Launch the system**
 ```sh
 ❯ ros2 launch detect_and_track_bringup bringup.launch.py
 ```
@@ -119,22 +113,22 @@ You can download the suitable onnx-runtime for your system from the following li
 
 
 ###  Params
-The easiest way to configure the project is to edit parameters in src/detect_and_track_bringup/config:
+The easiest way to configure the project is to edit parameters in **src/detect_and_track_bringup/config**:
 
 
-1) detection_and_mot_params:
+1) **detection_and_mot_params:**
 
-* detection_fps is how often you run your detection. Set it to your min. model's fps.
+* **detection_fps** is how often you run your detection. Set it to your min. model's fps.
 
-* delay_time is the shift in time in past that detections are published with. This depends on the detection delay + tracking delay time.
+* **delay_time** is the shift in time in past that detections are published with. This depends on the **detection delay + tracking delay time**.
 
-2) stream_manager_*_params.yaml
+2) **stream_manager_*_params.yaml**
 
-* target_fps is the fps your stream manager is going to publish. It's limitng maximum fps.
+* **target_fps** is the fps your stream manager is going to publish. It's limitng maximum fps.
 
-3) detection_time_out_params.yaml
+3) **detection_time_out_params.yaml**
 
-* 
+* **detection_time_out** is the time in seconds that the system will wait for a detection before considering it as a timeout.
 
 
 
