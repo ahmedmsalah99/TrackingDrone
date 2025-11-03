@@ -1,0 +1,8 @@
+video_manager:
+  ros__parameters:
+    # Display parameters
+    display_width: 640
+    display_height: 480
+    num_frames_cached: 50
+    detection_time_out: 0.7
+    window_name: "Detection and Tracking"

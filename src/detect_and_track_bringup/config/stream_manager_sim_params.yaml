@@ -1,0 +1,17 @@
+stream_manager:
+  ros__parameters:
+    video_source:
+      type: "gazebo_ros2"
+      topic_name: "/camera/image_raw"
+      timeout_seconds: 5.0
+    buffer:
+      target_fps: 30.0
+    scaling:
+      enabled: true
+      target_width: 640
+      target_height: 480
+      interpolation_method: 1
+    publishing:
+      current_frame_topic: "/stream_manager/current_frame"
+      enable_current_publishing: true
+    enable_debug_logging: true

@@ -1,0 +1,8 @@
+detection_and_mot:
+  ros__parameters:
+    # Detection parameters
+    model_path: "best3_nano.onnx"
+    labels_path: "coco_mod.names"
+    use_gpu: false
+    detection_fps: 10.0
+    delay_time: 0.25

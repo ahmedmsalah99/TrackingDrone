@@ -1,0 +1,3 @@
+video_manager:
+  ros__parameters:
+    video_name: 'cars2.mp4'

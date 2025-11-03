@@ -24,18 +24,16 @@ public:
   DetectionAndMOTNode() : Node("detection_and_mot_node"), current_target_(6) {
     // Initialize parameters
     std::string shared_path =
-        ament_index_cpp::get_package_share_directory("detection_and_mot");
-    declare_parameter<std::string>("model_path",
-                                   shared_path + "/resources/best3_nano.onnx");
-    declare_parameter<std::string>("labels_path",
-                                   shared_path + "/resources/coco_mod.names");
+        ament_index_cpp::get_package_share_directory("detection_and_mot") + "/resources/";
+    declare_parameter<std::string>("model_path","best3_nano.onnx");
+    declare_parameter<std::string>("labels_path","coco_mod.names");
     declare_parameter<bool>("use_gpu", false);
     declare_parameter<double>("detection_fps", 10.0);
     declare_parameter<double>("delay_time", 0.25);
 
     // Get parameters
-    std::string model_path = get_parameter("model_path").as_string();
-    std::string labels_path = get_parameter("labels_path").as_string();
+    std::string model_path = shared_path + get_parameter("model_path").as_string();
+    std::string labels_path = shared_path + get_parameter("labels_path").as_string();
     bool use_gpu = get_parameter("use_gpu").as_bool();
     detection_fps_ = get_parameter("detection_fps").as_double();
     delay_time =
