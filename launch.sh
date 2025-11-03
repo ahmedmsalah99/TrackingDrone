@@ -1,6 +1,0 @@
-source install/setup.sh
-
-ros2 run moc_video_publisher moc_video_publisher_node
-ros2 run stream_manager stream_manager_node
-ros2 run video_manager video_manager_node
-ros2 run detection_and_mot detection_and_mot_node
