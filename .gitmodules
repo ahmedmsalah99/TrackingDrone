@@ -1,0 +1,6 @@
+[submodule "src/ros2_shm_msgs"]
+	path = src/ros2_shm_msgs
+	url = https://github.com/ZhenshengLee/ros2_shm_msgs.git
+[submodule "src/stream_manager"]
+	path = src/stream_manager
+	url = https://github.com/ahmedmsalah99/StreamManager.git
