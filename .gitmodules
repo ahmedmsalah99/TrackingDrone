@@ -4,3 +4,6 @@
 [submodule "src/stream_manager"]
 	path = src/stream_manager
 	url = https://github.com/ahmedmsalah99/StreamManager.git
+[submodule "simulation/R-VIO"]
+	path = simulation/R-VIO
+	url = https://github.com/ahmedmsalah99/R-VIO.git
