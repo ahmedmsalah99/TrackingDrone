@@ -14,6 +14,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/Detection.msg"
   "msg/Detections.msg"
   "srv/ChangeTarget.srv"
+  "action/Track.action"
   DEPENDENCIES builtin_interfaces
 )
 
