@@ -98,5 +98,5 @@ def generate_launch_description():
         stream_manager_node,
         detection_and_mot_node,
         video_manager_node,
-        moc_video_pub_node
+        # moc_video_pub_node
     ])

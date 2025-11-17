@@ -10,12 +10,18 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
 find_package(common_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(ardupilot_msgs REQUIRED)
+find_package(Eigen3 REQUIRED)
+# find_package(MAVLink REQUIRED)
 
 add_executable(track_controller src/track_controller.cpp)
-ament_target_dependencies(track_controller rclcpp rclcpp_action common_msgs)
+ament_target_dependencies(track_controller rclcpp rclcpp_action common_msgs geometry_msgs ardupilot_msgs)
 target_include_directories(track_controller PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<BUILD_INTERFACE:/opt/ros/humble/include/mavlink/v2.0>
   $<INSTALL_INTERFACE:include>)
+target_link_libraries(track_controller Eigen3::Eigen)
 target_compile_features(track_controller PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
 
 install(TARGETS track_controller

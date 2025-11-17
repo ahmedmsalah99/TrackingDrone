@@ -7,3 +7,6 @@
 [submodule "simulation/R-VIO"]
 	path = simulation/R-VIO
 	url = https://github.com/ahmedmsalah99/R-VIO.git
+[submodule "src/R-VIO"]
+	path = src/R-VIO
+	url = https://github.com/ahmedmsalah99/R-VIO.git
