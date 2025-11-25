@@ -1,7 +1,7 @@
 
-## Hovering in wind
-![Hover in wind](resources/car_tracking.gif)
 ## Car tracking
+![Hover in wind](resources/car_tracking.gif)
+## Hovering in wind 
 ![Car tracking](resources/hover_in_wind.gif)
 ### Setup:
 
